@@ -78,5 +78,8 @@ Status: **plano, ainda sem código**. As decisões abertas estão no fim.
 1. **Hospedagem**: Cloudflare (recomendado) ou Vercel + Supabase.
 2. **Permissões quando o Jarbas roda um pedido sozinho no PC**: `acceptEdits` (edita arquivos, mas comandos fora da lista são recusados), `auto` (o Claude decide o que é seguro) ou liberar tudo (`bypassPermissions`, mais arriscado). Perguntar no site a cada permissão é possível, mas é bem mais trabalho; fica para depois.
 3. **Roteamento**: começar com conta/PC fixo por projeto (recomendado) ou já querer "Jarbas decide".
-4. **Download**: se o repositório é privado, o zip fica no próprio site (R2 grátis) em vez de GitHub Releases.
-5. **Onde fica o código do site**: pasta `site/` neste repositório (recomendado, um lugar só) ou repositório separado.
+
+## Já decidido
+
+- Repositório privado: o zip do app fica no próprio site (R2 grátis ou servido pelo Worker), não em GitHub Releases públicas.
+- Código do site na pasta `site/` deste repositório, no master (mesmas regras: fetch + merge, push sem force, sem LFS).
