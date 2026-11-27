@@ -607,7 +607,8 @@ function Get-ModelosPendentes {
     $j = Read-Modelos
     if (-not $j) { return @() }
     $rs = @(Read-Remotes)
-    return @(@($j.remotes) | Where-Object { $n = $_.nome; -not ($rs | Where-Object { $_.nome -eq $n }) })
+    $ocultos = @(Read-Ocultos)
+    return @(@($j.remotes) | Where-Object { $n = $_.nome; ($ocultos -notcontains $n) -and -not ($rs | Where-Object { $_.nome -eq $n }) })
 }
 
 function Get-PastaPadrao {
@@ -636,4 +637,41 @@ function Remove-Remote($r) {
     Unregister-ScheduledTask -TaskName $r.tarefa -Confirm:$false -ErrorAction SilentlyContinue
     Remove-RemoteSalvo $r
     Say '  Removido (a pasta da conta e o login foram mantidos).'
+}
+
+# Sugestões (modelos.json) que o usuário removeu neste PC.
+$script:OcultosArq = Join-Path $script:Base 'sugestoes-removidas.json'
+
+function Read-Ocultos {
+    if (-not (Test-Path $script:OcultosArq)) { return @() }
+    try { return @([IO.File]::ReadAllText($script:OcultosArq) | ConvertFrom-Json) } catch { return @() }
+}
+
+function Hide-Modelo($m) {
+    New-Item -ItemType Directory -Force $script:Base | Out-Null
+    $l = @(Read-Ocultos) + @($m.nome) | Select-Object -Unique
+    [IO.File]::WriteAllText($script:OcultosArq, (ConvertTo-Json @($l)), (New-Object Text.UTF8Encoding($false)))
+    Say "Sugestão '$($m.nome)' removida deste PC (para voltar, apague $script:OcultosArq)."
+}
+
+# Processo de uma tarefa que o programa não gerencia (pelo --name ou pela pasta de debug do lançador).
+function Find-ProcessoSolta($s, $procs) {
+    foreach ($p in $procs) { if ($s.nome -and (Test-TemTexto $p.CommandLine "--name `"$($s.nome)`"")) { return $p } }
+    return $null
+}
+
+# Para e apaga uma tarefa de Remote Control feita fora do programa. O lançador e o login da conta ficam.
+function Remove-TarefaSolta($s) {
+    $rotulo = if ($s.nome) { $s.nome } else { $s.tarefa }
+    Say "Removendo '$rotulo' (tarefa '$($s.tarefa)')..."
+    Stop-ScheduledTask -TaskName $s.tarefa -ErrorAction SilentlyContinue
+    $p = Find-ProcessoSolta $s (Get-ProcessosRC)
+    if ($p) { & taskkill.exe /PID $p.ProcessId /T /F | Out-Null }
+    for ($i = 0; $i -lt 20; $i++) {
+        $t = Get-ScheduledTask -TaskName $s.tarefa -ErrorAction SilentlyContinue
+        if (-not $t -or $t.State -ne 'Running') { break }
+        Wait-Um 500
+    }
+    Unregister-ScheduledTask -TaskName $s.tarefa -Confirm:$false -ErrorAction Stop
+    Say '  Removido (o login da conta foi mantido).'
 }

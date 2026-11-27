@@ -23,8 +23,15 @@ Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 . (Join-Path $PSScriptRoot 'Atualizacao.ps1')
 if (-not $Captura) {
     try {
-        if (Update-Programa -PodePedirLogin) {
-            [void][Windows.Forms.MessageBox]::Show("Programa atualizado para a versão $(Get-VersaoLocal). Abrindo de novo.", 'Claude Remote Manager')
+        $perguntar = {
+            param($nova, $atual, $notas)
+            $txt = "Nova versão $nova disponível (você está na $atual)."
+            if ($notas) { $txt += "`r`n`r`n$notas" }
+            $txt += "`r`n`r`nAtualizar agora? O programa fecha e abre de novo sozinho. Os Remote Control que estão rodando não caem."
+            return ([Windows.Forms.MessageBox]::Show($txt, 'Atualização do Claude Remote Manager', 'YesNo', 'Question') -eq 'Yes')
+        }
+        if (Update-Programa -PodePedirLogin -Confirmar $perguntar) {
+            [void][Windows.Forms.MessageBox]::Show("Pronto, atualizado para a versão $(Get-VersaoLocal). Abrindo de novo.", 'Claude Remote Manager')
             Start-Process powershell -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-STA', '-File', "`"$PSCommandPath`"")
             exit
         }
@@ -45,7 +52,7 @@ $topo.Dock = 'Top'; $topo.Height = 28; $topo.Padding = New-Object Windows.Forms.
 $lista = New-Object Windows.Forms.ListView
 $lista.View = 'Details'; $lista.FullRowSelect = $true; $lista.MultiSelect = $false; $lista.HideSelection = $false
 $lista.Dock = 'Fill'
-foreach ($c in @(@('Remote', 190), @('Conta (login)', 260), @('Situação', 140), @('Rodando', 120), @('Conexão', 100), @('Pasta', 140), @('Tarefa do Windows', 250))) {
+foreach ($c in @(@('Remote', 190), @('Estado', 100), @('Conta', 280), @('Sessões abertas', 110), @('Pasta', 150), @('O que fazer', 330))) {
     [void]$lista.Columns.Add($c[0], $c[1])
 }
 
@@ -67,22 +74,31 @@ function Add-Botao($chave, $texto, $dica) {
     return $b
 }
 
-$bAtualizar = Add-Botao 'atualizar' 'Atualizar' 'Lê de novo o estado de tudo.'
-$bCriar     = Add-Botao 'criar'     'Criar este remote' 'Cria o remote sugerido ou adota a tarefa antiga selecionada.'
-$bNovo      = Add-Botao 'novo'      'Novo remote...' 'Cria um Remote Control novo (nome, conta e pasta).'
-$bConsertar = Add-Botao 'consertar' 'Conferir e consertar' 'Confere o remote selecionado e conserta o que estiver errado. Não derruba o que está rodando.'
-$bTudo      = Add-Botao 'tudo'      'Consertar todos' 'Cria os sugeridos que faltam e confere/conserta todos.'
+$titulo = New-Object Windows.Forms.Label
+$titulo.Text = 'Selecione uma linha e escolha:'; $titulo.AutoSize = $true; $titulo.Margin = New-Object Windows.Forms.Padding(0, 4, 0, 6)
+$painel.Controls.Add($titulo)
+$bCriar     = Add-Botao 'criar'     'Criar' 'Cria o remote que ainda não existe, ou passa a gerenciar uma tarefa feita fora do programa (sem derrubar).'
+$bCriar.Font = New-Object Drawing.Font('Segoe UI', 9.5, [Drawing.FontStyle]::Bold)
+$bRemover   = Add-Botao 'remover'   'Remover...' 'Para o Remote Control e apaga a tarefa do Windows (pede confirmação; o login da conta fica guardado).'
+$bRemover.ForeColor = [Drawing.Color]::Firebrick
 $bLogin     = Add-Botao 'login'     'Entrar na conta' 'Abre o login da conta do remote selecionado.'
-$bTestar    = Add-Botao 'testar'    'Testar' 'Se está rodando, confere a conexão; se não, sobe e espera conectar.'
+$bConsertar = Add-Botao 'consertar' 'Conferir e consertar' 'Confere o remote selecionado e conserta o que estiver errado. Não derruba o que está rodando.'
+$bTestar    = Add-Botao 'testar'    'Testar conexão' 'Se está rodando, confere a conexão; se não, sobe e espera conectar.'
 $bReiniciar = Add-Botao 'reiniciar' 'Reiniciar' 'Derruba e sobe de novo (as sessões desse remote caem).'
 $bEditar    = Add-Botao 'editar'    'Editar...' 'Muda nome, conta, pasta ou modo.'
-$bRemover   = Add-Botao 'remover'   'Remover' 'Para o remote e apaga a tarefa (mantém o login da conta).'
 $bLogs      = Add-Botao 'logs'      'Abrir pasta de logs' 'Abre a pasta com os logs do remote selecionado.'
+$sep = New-Object Windows.Forms.Label; $sep.Text = 'Geral:'; $sep.AutoSize = $true; $sep.Margin = New-Object Windows.Forms.Padding(0, 14, 0, 6)
+$painel.Controls.Add($sep)
+$bNovo      = Add-Botao 'novo'      'Novo remote...' 'Cria um Remote Control novo (nome, conta e pasta).'
+$bTudo      = Add-Botao 'tudo'      'Criar e conferir todos' 'Cria os que ainda não existem e confere/conserta todos.'
+$bAtualizar = Add-Botao 'atualizar' 'Recarregar lista' 'Lê de novo o estado de tudo.'
 
 $form.Controls.Add($lista)
 $form.Controls.Add($painel)
 $form.Controls.Add($detalhe)
 $form.Controls.Add($topo)
+$lista.BringToFront()   # a lista ocupa só o espaço que sobra; o painel de botões fica sempre visível
+$painel.AutoScroll = $true
 
 $script:OnLog = {
     param($m)
@@ -102,8 +118,9 @@ function Update-Botoes {
     $s = Get-Selecionado
     $gerenciado = [bool]($s -and $s.tipo -eq 'remote')
     $bCriar.Enabled = [bool]($s -and $s.tipo -ne 'remote')
-    $bCriar.Text = if ($s -and $s.tipo -eq 'solta') { 'Adotar esta tarefa' } else { 'Criar este remote' }
-    foreach ($k in 'consertar', 'login', 'testar', 'reiniciar', 'editar', 'remover', 'logs') { $botoes[$k].Enabled = $gerenciado }
+    $bCriar.Text = if ($s -and $s.tipo -eq 'solta') { 'Gerenciar pelo programa' } else { 'Criar' }
+    $bRemover.Enabled = [bool]$s
+    foreach ($k in 'consertar', 'login', 'testar', 'reiniciar', 'editar', 'logs') { $botoes[$k].Enabled = $gerenciado }
 }
 
 function Set-Ocupado([bool]$o) {
@@ -131,6 +148,30 @@ function Show-Detalhe {
     $detalhe.AppendText(($l -join "`r`n") + "`r`n")
 }
 
+# Nome amigável da conta (pasta de configuração).
+function Get-ContaNome($conta) {
+    if ([string]::IsNullOrEmpty($conta)) { return 'conta principal' }
+    return "conta $(Split-Path $conta -Leaf)"
+}
+
+function Get-ContaTexto($conta, $login) {
+    $quem = if ($login.logado) { $login.email } else { 'não logada' }
+    return "$quem ($(Get-ContaNome $conta))"
+}
+
+# Estado em uma palavra: Ativo, Parado, Sem login ou Erro, com cor e o que fazer.
+function Get-EstadoSimples($e) {
+    $semLogin = (-not $e.login.logado) -or ($e.problemas | Where-Object { $_ -like '*login expirou*' })
+    $outros = @($e.problemas | Where-Object { $_ -notlike '*não está rodando*' })
+    if ($semLogin) { return @{ texto = 'Sem login'; cor = [Drawing.Color]::Firebrick; dica = 'Clique em Entrar na conta.' } }
+    if ($e.processo -and $e.conexao -eq 'conectado') {
+        if ($outros.Count) { return @{ texto = 'Ativo'; cor = [Drawing.Color]::DarkOrange; dica = "Funcionando, mas: $($outros[0]). Clique em Conferir e consertar." } }
+        return @{ texto = 'Ativo'; cor = [Drawing.Color]::DarkGreen; dica = 'Tudo certo.' }
+    }
+    if ($e.processo) { return @{ texto = 'Erro'; cor = [Drawing.Color]::Firebrick; dica = "Rodando, mas $($e.conexao). Clique em Testar conexão ou Reiniciar." } }
+    return @{ texto = 'Parado'; cor = [Drawing.Color]::DarkOrange; dica = 'Clique em Conferir e consertar para subir.' }
+}
+
 function Update-Lista {
     $sel = Get-Selecionado
     $selId = if ($sel) { $sel.chave } else { '' }
@@ -142,22 +183,24 @@ function Update-Lista {
     foreach ($r in Read-Remotes) {
         $e = Get-Estado $r $procs
         $script:Estados[$r.id] = $e
-        $conta = Get-ContaRotulo $r.conta
-        $login = if ($e.login.logado) { $e.login.email } else { 'NÃO LOGADA' }
-        $situacao = if ($e.problemas.Count -eq 0) { 'OK' } else { "$($e.problemas.Count) problema(s)" }
-        $rodando = if ($e.processo) { "sim, $($e.sessoes) sessão(ões)" } else { 'não' }
-        $nome = if ($e.nomeAntigo) { "$($r.nome) (reiniciar p/ renomear)" } else { $r.nome }
-        $cor = if ($e.problemas.Count -eq 0) { [Drawing.Color]::DarkGreen } elseif ($e.processo -and $e.login.logado) { [Drawing.Color]::DarkOrange } else { [Drawing.Color]::Firebrick }
-        Add-Linha ([pscustomobject]@{ tipo = 'remote'; chave = "r:$($r.id)"; r = $r }) @($nome, "$login  [$conta]", $situacao, $rodando, $e.conexao, $r.pasta, $r.tarefa) $cor
+        $est = Get-EstadoSimples $e
+        $conta = Get-ContaTexto $r.conta $e.login
+        $sessoes = if ($e.processo) { [string]$e.sessoes } else { '-' }
+        $nome = if ($e.nomeAntigo) { "$($r.nome) (reinicie para trocar o nome)" } else { $r.nome }
+        Add-Linha ([pscustomobject]@{ tipo = 'remote'; chave = "r:$($r.id)"; r = $r }) @($nome, $est.texto, $conta, $sessoes, $r.pasta, $est.dica) $est.cor
     }
     foreach ($m in Get-ModelosPendentes) {
         $pasta = if ($m.pasta) { $m.pasta } else { Get-PastaPadrao }
-        Add-Linha ([pscustomobject]@{ tipo = 'modelo'; chave = "m:$($m.nome)"; m = $m }) @($m.nome, "(conta: $($m.conta))", 'sugerido: Criar', '-', '-', $pasta, '-') ([Drawing.Color]::SteelBlue)
+        $conta = Get-ContaNome (Get-ContaDeModelo $m)
+        Add-Linha ([pscustomobject]@{ tipo = 'modelo'; chave = "m:$($m.nome)"; m = $m }) @($m.nome, 'Não criado', $conta, '-', $pasta, 'Clique em Criar (ou Remover, se não quiser neste PC).') ([Drawing.Color]::SteelBlue)
     }
     foreach ($s in Find-TarefasSoltas) {
-        $p = $procs | Where-Object { $s.nome -and (Test-TemTexto $_.CommandLine "--name `"$($s.nome)`"") } | Select-Object -First 1
-        $rod = if ($p) { "sim, $(Get-Sessoes $p) sessão(ões)" } else { 'não' }
-        Add-Linha ([pscustomobject]@{ tipo = 'solta'; chave = "s:$($s.tarefa)"; s = $s }) @($s.nome, "[$(Get-ContaRotulo $s.conta)]", 'antiga: Adotar', $rod, '-', $s.pasta, $s.tarefa) ([Drawing.Color]::DimGray)
+        $p = Find-ProcessoSolta $s $procs
+        $txt = if ($p) { 'Ativo' } else { 'Parado' }
+        $cor = if ($p) { [Drawing.Color]::DarkGreen } else { [Drawing.Color]::DarkOrange }
+        $sessoes = if ($p) { [string](Get-Sessoes $p) } else { '-' }
+        $nome = if ($s.nome) { $s.nome } else { $s.tarefa }
+        Add-Linha ([pscustomobject]@{ tipo = 'solta'; chave = "s:$($s.tarefa)"; s = $s }) @($nome, $txt, (Get-ContaNome $s.conta), $sessoes, $s.pasta, 'Feito fora do programa: Gerenciar pelo programa, ou Remover.') $cor
     }
     $lista.EndUpdate()
     foreach ($it in $lista.Items) { if ($it.Tag.chave -eq $selId) { $it.Selected = $true } }
@@ -300,8 +343,24 @@ $bEditar.Add_Click({
 })
 $bRemover.Add_Click({
     $s = Get-Selecionado
-    $q = [Windows.Forms.MessageBox]::Show($form, "Remover '$($s.r.nome)'? Ele para de rodar e a tarefa do Windows é apagada. O login da conta fica guardado.", 'Remover', 'YesNo', 'Warning')
-    if ($q -eq 'Yes') { Invoke-Acao { Remove-Remote $s.r } }
+    if (-not $s) { return }
+    switch ($s.tipo) {
+        'remote' {
+            $e = $script:Estados[$s.r.id]
+            $aviso = if ($e -and $e.sessoes -gt 0) { "`r`n`r`nAtenção: ele tem $($e.sessoes) sessão(ões) abertas, que vão cair." } else { '' }
+            $q = [Windows.Forms.MessageBox]::Show($form, "Remover '$($s.r.nome)'?`r`n`r`nEle para de rodar e a tarefa do Windows é apagada. O login da conta fica guardado.$aviso", 'Remover', 'YesNo', 'Warning')
+            if ($q -eq 'Yes') { Invoke-Acao { Remove-Remote $s.r } }
+        }
+        'solta' {
+            $nome = if ($s.s.nome) { $s.s.nome } else { $s.s.tarefa }
+            $q = [Windows.Forms.MessageBox]::Show($form, "Remover '$nome'?`r`n`r`nEle para de rodar (as sessões abertas caem) e a tarefa do Windows '$($s.s.tarefa)' é apagada. O login da conta fica guardado.", 'Remover', 'YesNo', 'Warning')
+            if ($q -eq 'Yes') { Invoke-Acao { Remove-TarefaSolta $s.s } }
+        }
+        'modelo' {
+            $q = [Windows.Forms.MessageBox]::Show($form, "Não criar '$($s.m.nome)' neste PC?`r`n`r`nEle some da lista deste PC. Nada é apagado.", 'Remover', 'YesNo', 'Question')
+            if ($q -eq 'Yes') { Invoke-Acao { Hide-Modelo $s.m } }
+        }
+    }
 })
 $bLogs.Add_Click({
     $s = Get-Selecionado
@@ -312,7 +371,7 @@ $bLogs.Add_Click({
 
 function Start-Janela {
     Invoke-Acao { }
-    if (Get-ModelosPendentes) { Say 'Há remotes sugeridos (azul) que ainda não existem neste PC: selecione e clique Criar, ou use Consertar todos.' }
+    if (Get-ModelosPendentes) { Say 'Há remotes "Não criado" (azul): selecione e clique Criar, ou Remover se não quiser neste PC.' }
 }
 
 if ($Captura) {

@@ -1,6 +1,6 @@
 ﻿# Claude Remote Manager - atualização automática pelo site CruzVerbenaGroup.
 # Ao abrir a janela, pergunta ao site qual é a versão publicada. Se for mais nova que a deste PC,
-# baixa o pacote, instala por cima desta pasta e abre o programa de novo.
+# pergunta se pode atualizar; se sim, baixa o pacote, instala por cima desta pasta e abre o programa de novo.
 # O login do site fica salvo por usuário do Windows (criptografado com DPAPI) em
 # %USERPROFILE%\.claude-remote-manager\site-login.xml. Sem internet ou com o site fora do ar, segue sem atualizar.
 
@@ -76,12 +76,14 @@ function Get-VersaoSite([switch]$PodePedirLogin) {
 }
 
 # Confere e, se houver versão nova, instala. Devolve $true quando atualizou (quem chamou deve reabrir o programa).
-function Update-Programa([switch]$PodePedirLogin) {
+# -Confirmar: scriptblock que recebe (versaoNova, versaoAtual, notas) e devolve $true para atualizar.
+function Update-Programa([switch]$PodePedirLogin, [scriptblock]$Confirmar) {
     $info = Get-VersaoSite -PodePedirLogin:$PodePedirLogin
     if (-not $info -or -not $info.versao) { return $false }
     try { $nova = [version]$info.versao } catch { return $false }
     $atual = Get-VersaoLocal
     if ($nova -le $atual) { return $false }
+    if ($Confirmar -and -not (& $Confirmar $nova $atual ([string]$info.notas))) { return $false }
 
     $tmp = Join-Path $env:TEMP ("crm-atualizacao-" + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Force $tmp | Out-Null

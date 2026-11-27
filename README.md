@@ -9,8 +9,10 @@ Ele mostra os remotes configurados na máquina, se cada um está rodando e conec
 1. Clone este repositório no PC (por exemplo em `C:\Projetos\claude-remote-manager`).
 2. Dê dois cliques em **`Gerenciar Remote Control.bat`** e aceite o pedido de administrador.
 3. Na janela:
-   - Linhas **azuis** são remotes sugeridos (de `app/modelos.json`) que ainda não existem neste PC: selecione e clique **Criar este remote**, ou clique **Consertar todos**.
-   - Linhas **cinza** são tarefas antigas de Remote Control feitas à mão: **Adotar** passa a gerenciá-las sem derrubar o que está rodando.
+   - A coluna **Estado** diz em uma palavra como está cada um: **Ativo**, **Parado**, **Sem login**, **Erro** ou **Não criado**. A coluna **O que fazer** diz qual botão usar.
+   - **Não criado** (azul) são remotes sugeridos (de `app/modelos.json`) que ainda não existem neste PC: selecione e clique **Criar**, ou **Remover...** se não quiser neste PC.
+   - Tarefas de Remote Control feitas fora do programa aparecem com "Feito fora do programa": **Gerenciar pelo programa** passa a cuidar delas sem derrubar o que está rodando, e **Remover...** para e apaga a tarefa.
+   - **Remover...** sempre pede confirmação e mantém o login da conta.
    - Quando uma conta não está logada, o programa abre o login dela e espera você entrar no navegador.
 
 Rodar de novo só confere e conserta: nada que está rodando é derrubado (o nome novo de um remote vale depois de **Reiniciar** ou do próximo boot).
@@ -28,7 +30,7 @@ Sem janela: `"Gerenciar Remote Control.bat" /consertar` (abre login se precisar)
 
 ## Atualização automática
 
-Ao abrir a janela, o programa pergunta ao site **CruzVerbenaGroup** (endereço em `app/site.json`) qual é a versão publicada. Se for mais nova que `app/versao.txt`, baixa o pacote, instala por cima da pasta e abre de novo. Na primeira vez ele pede o login do site e guarda criptografado para o seu usuário do Windows (`%USERPROFILE%\.claude-remote-manager\site-login.xml`). Sem internet, segue sem atualizar. O modo sem janela (`/consertar`) não atualiza.
+Ao abrir a janela, o programa pergunta ao site **CruzVerbenaGroup** (endereço em `app/site.json`) qual é a versão publicada. Se for mais nova que `app/versao.txt`, baixa o pacote, instala por cima da pasta e abre de novo. Na primeira vez ele pede o login do site e guarda criptografado para o seu usuário do Windows (`%USERPROFILE%\.claude-remote-manager\site-login.xml`). Sem internet, segue sem atualizar. Antes de atualizar ele pergunta. O modo sem janela (`/consertar`) não atualiza.
 
 Para publicar uma versão nova: `powershell -ExecutionPolicy Bypass -File ferramentas\Publicar-Versao.ps1 -Versao 1.0.1 -Notas "O que mudou" -Site C:\Projetos\CruzVerbenaGroup`, depois commit e push nos dois repositórios (ou peça ao Claude).
 
