@@ -16,6 +16,8 @@ Memória compartilhada entre as contas do Claude que trabalham neste repositóri
 
 - 27/11/2026, sessão na nuvem: 1.1.2 corrige "Entrar na conta" (no PC Lucas a janela piscava e fechava). O login agora abre um `.cmd` visível (`rc\<id>\login.cmd`) que mostra o erro e espera uma tecla se falhar; o programa espera pelo arquivo de fim ou pela conta logada, sem depender do processo da janela. `app/login.ps1` saiu. 1.1.3: botão **Verificar atualização** (seção Geral). Não testado no Windows.
 
+- 27/11/2026, sessão na nuvem: 1.2.0, login pelo próprio programa (sem terminal). O `claude auth login` roda escondido com a entrada redirecionada (testado no Linux: com stdin em pipe ele imprime o link e lê o código de uma linha). A janela do programa abre o link numa janela anônima (Edge InPrivate ou Chrome, como usuário comum via `runas /trustlevel`), tem caixa para colar o código (enviado sem espaços) e mostra o erro em português. No PC Lucas o código colado no terminal dava "invalid code". Não testado no Windows.
+
 ## Pendente
 
 - Publicar versão nova: `ferramentas/Publicar-Versao.ps1` (ou pedir ao Claude), commit e push no app e no site.

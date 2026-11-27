@@ -113,75 +113,163 @@ function Get-Login($conta) {
     }
 }
 
-# Abre uma janela de terminal visível com o login da conta e espera o usuário terminar.
-# A janela é um .cmd (não depende de PowerShell nem do terminal padrão do Windows) e só fecha
-# sozinha quando o login dá certo; se falhar, mostra o erro e espera uma tecla.
-# A espera não confia no processo da janela (o Terminal do Windows 11 pode trocar de processo):
-# termina quando o .cmd grava o arquivo de fim, quando a conta aparece logada, ou em 15 min.
+# ---------------------------------------------------------------- login pelo próprio programa
+# O "claude auth login" roda escondido (sem terminal). O programa pega o link de login, abre no
+# navegador (de preferência numa janela anônima, para não usar a conta já logada no navegador)
+# e tem uma caixa para colar o código que o site mostra. O código vai limpo para o processo.
+# Se o navegador completar o login sozinho (sem código), o programa percebe e fecha.
+
+function Find-NavegadorAnonimo {
+    $edge = @("${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe", "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe")
+    $chrome = @("$env:ProgramFiles\Google\Chrome\Application\chrome.exe", "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe", "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe")
+    foreach ($e in $edge) { if ($e -and (Test-Path $e)) { return @{ exe = $e; arg = '--inprivate'; nome = 'Edge (InPrivate)' } } }
+    foreach ($c in $chrome) { if ($c -and (Test-Path $c)) { return @{ exe = $c; arg = '--incognito'; nome = 'Chrome (anônima)' } } }
+    return $null
+}
+
+# Abre a URL numa janela anônima, como usuário comum (o programa roda como administrador).
+function Open-Anonimo([string]$url) {
+    $n = Find-NavegadorAnonimo
+    if (-not $n) { Start-Process $url; return }
+    try {
+        $linha = "\`"$($n.exe)\`" $($n.arg) \`"$url\`""
+        $p = Start-Process runas.exe -ArgumentList @('/trustlevel:0x20000', "`"$linha`"") -WindowStyle Hidden -PassThru -Wait
+        if ($p.ExitCode -eq 0) { return }
+    } catch { }
+    Start-Process -FilePath $n.exe -ArgumentList @($n.arg, "`"$url`"")
+}
+
+function Read-Compartilhado([string]$arq) {
+    if (-not (Test-Path $arq)) { return '' }
+    try {
+        $fs = [IO.File]::Open($arq, 'Open', 'Read', 'ReadWrite')
+        try { $sr = New-Object IO.StreamReader($fs, [Text.Encoding]::UTF8); return $sr.ReadToEnd() } finally { $fs.Dispose() }
+    } catch { return '' }
+}
+
+function Stop-Arvore($p) {
+    if ($p -and -not $p.HasExited) { & taskkill.exe /PID $p.Id /T /F 2>$null | Out-Null }
+}
+
+function Start-ProcessoLogin($r, [string]$saida) {
+    Remove-Item $saida -Force -ErrorAction SilentlyContinue
+    $exe = Get-ClaudeExe
+    $emailArg = if ($r.email) { " --email `"$($r.email)`"" } else { '' }
+    $psi = New-Object Diagnostics.ProcessStartInfo
+    $psi.FileName = $env:ComSpec
+    $psi.Arguments = "/d /s /c `"`"$exe`" auth login$emailArg > `"$saida`" 2>&1`""
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardInput = $true
+    $psi.CreateNoWindow = $true
+    if ($r.conta) { $psi.EnvironmentVariables['CLAUDE_CONFIG_DIR'] = $r.conta }
+    elseif ($psi.EnvironmentVariables.ContainsKey('CLAUDE_CONFIG_DIR')) { $psi.EnvironmentVariables.Remove('CLAUDE_CONFIG_DIR') }
+    return [Diagnostics.Process]::Start($psi)
+}
+
+# Abre a janela de login da conta e espera o usuário terminar. Devolve $true se a conta ficou logada.
 function Start-Login($r) {
     if (-not $script:PodeLogar) { Say "  Login necessário em '$($r.nome)': abra o programa neste PC e clique em Entrar na conta."; return $false }
+    Add-Type -AssemblyName System.Windows.Forms, System.Drawing
     $dir = Get-RcDir $r
     New-Item -ItemType Directory -Force $dir | Out-Null
     if ($r.conta) { New-Item -ItemType Directory -Force $r.conta | Out-Null }
-    $cmd = Join-Path $dir 'login.cmd'
-    $fim = Join-Path $dir 'login-fim.txt'
-    Remove-Item $fim -Force -ErrorAction SilentlyContinue
-    $exe = Get-ClaudeExe
-    if (-not $exe -or -not (Test-Path $exe)) { Say '  ERRO: não achei o claude.exe neste PC. Instale o Claude Code e tente de novo.'; return $false }
-    $setConta = if ($r.conta) { "set `"CLAUDE_CONFIG_DIR=$($r.conta)`"" } else { 'set "CLAUDE_CONFIG_DIR="' }
-    $emailArg = if ($r.email) { " --email `"$($r.email)`"" } else { '' }
-    $t = @"
-@echo off
-title Login do Claude - $($r.nome)
-$setConta
-echo.
-echo   Login da conta do remote "$($r.nome)"
-echo.
-echo   O navegador vai abrir na pagina de login do Claude.
-echo   Entre com a conta certa para este remote.
-echo   Se o navegador ja estiver logado em outra conta, saia dela
-echo   ou aperte C aqui para copiar o link e cole numa janela anonima.
-echo.
-"$exe" auth login$emailArg
-set "RC=%errorlevel%"
-echo %RC%> "$fim"
-echo.
-if "%RC%"=="0" (
-  echo   Pronto. Esta janela fecha sozinha.
-  timeout /t 3 >nul
-) else (
-  echo   O login falhou ^(codigo %RC%^). Veja a mensagem acima.
-  echo   Aperte uma tecla para fechar.
-  pause >nul
-)
-"@
-    [IO.File]::WriteAllText($cmd, ($t -replace "`r?`n", "`r`n"), (Get-Oem))
-    Say "  Abrindo o login da conta de '$($r.nome)' numa janela de terminal. Entre no navegador; o programa espera."
-    try {
-        Start-Process -FilePath $env:ComSpec -ArgumentList @('/c', "`"$cmd`"") -WindowStyle Normal | Out-Null
-    } catch {
-        Say "  ERRO ao abrir a janela de login: $($_.Exception.Message)"
-        return $false
+    $saida = Join-Path $dir 'login-saida.txt'
+    $nav = Find-NavegadorAnonimo
+    Say "  Abrindo o login da conta de '$($r.nome)'."
+
+    $st = @{ p = $null; url = ''; enviado = $false; ok = $false }
+    $fonteL = New-Object Drawing.Font('Segoe UI', 10)
+    $d = New-Object Windows.Forms.Form
+    $d.Text = "Entrar na conta - $($r.nome)"
+    $d.Size = New-Object Drawing.Size(620, 430); $d.FormBorderStyle = 'FixedDialog'; $d.StartPosition = 'CenterScreen'
+    $d.MaximizeBox = $false; $d.MinimizeBox = $false; $d.Font = $fonteL; $d.TopMost = $true
+
+    function New-Rotulo($texto, $y, $alt = 22, $negrito = $false) {
+        $l = New-Object Windows.Forms.Label; $l.Text = $texto; $l.AutoSize = $false
+        $l.Location = New-Object Drawing.Point(16, $y); $l.Size = New-Object Drawing.Size(575, $alt)
+        if ($negrito) { $l.Font = New-Object Drawing.Font('Segoe UI', 10, [Drawing.FontStyle]::Bold) }
+        $d.Controls.Add($l); return $l
     }
-    $inicio = Get-Date
-    $ultimaChecagem = Get-Date
-    while (((Get-Date) - $inicio).TotalMinutes -lt 15) {
-        if (Test-Path $fim) { break }
-        if (((Get-Date) - $ultimaChecagem).TotalSeconds -ge 5) {
-            $ultimaChecagem = Get-Date
-            if ((Get-Login $r.conta).logado) { break }
+    [void](New-Rotulo "1. Abra o login e entre com a conta certa para '$($r.nome)'." 14 22 $true)
+    $nomeNav = if ($nav) { "Abrir em janela anônima ($($nav.nome))" } else { 'Abrir no navegador' }
+    [void](New-Rotulo 'A janela anônima evita entrar sem querer com a conta que já está logada no navegador. Se abrir sozinha uma aba do Claude logada na conta errada, feche essa aba.' 38 40)
+    $bAbrir = New-Object Windows.Forms.Button; $bAbrir.Text = $nomeNav; $bAbrir.Location = New-Object Drawing.Point(16, 84); $bAbrir.Size = New-Object Drawing.Size(330, 34); $bAbrir.Enabled = $false
+    $bCopiar = New-Object Windows.Forms.Button; $bCopiar.Text = 'Copiar link'; $bCopiar.Location = New-Object Drawing.Point(356, 84); $bCopiar.Size = New-Object Drawing.Size(120, 34); $bCopiar.Enabled = $false
+    $d.Controls.Add($bAbrir); $d.Controls.Add($bCopiar)
+    [void](New-Rotulo '2. Depois de entrar e autorizar, o site mostra um código. Copie e cole aqui:' 136 22 $true)
+    $tCodigo = New-Object Windows.Forms.TextBox; $tCodigo.Location = New-Object Drawing.Point(16, 164); $tCodigo.Size = New-Object Drawing.Size(460, 28); $tCodigo.Enabled = $false
+    $bEntrar = New-Object Windows.Forms.Button; $bEntrar.Text = 'Entrar'; $bEntrar.Location = New-Object Drawing.Point(486, 162); $bEntrar.Size = New-Object Drawing.Size(105, 32); $bEntrar.Enabled = $false
+    $bEntrar.Font = New-Object Drawing.Font('Segoe UI', 10, [Drawing.FontStyle]::Bold)
+    $d.Controls.Add($tCodigo); $d.Controls.Add($bEntrar); $d.AcceptButton = $bEntrar
+    $lStatus = New-Rotulo 'Preparando o login...' 214 110
+    $bNovo = New-Object Windows.Forms.Button; $bNovo.Text = 'Gerar novo link'; $bNovo.Location = New-Object Drawing.Point(16, 340); $bNovo.Size = New-Object Drawing.Size(150, 32); $bNovo.Visible = $false
+    $bFechar = New-Object Windows.Forms.Button; $bFechar.Text = 'Cancelar'; $bFechar.Location = New-Object Drawing.Point(486, 340); $bFechar.Size = New-Object Drawing.Size(105, 32); $bFechar.DialogResult = 'Cancel'
+    $d.Controls.Add($bNovo); $d.Controls.Add($bFechar); $d.CancelButton = $bFechar
+
+    $iniciar = {
+        Stop-Arvore $st.p
+        $st.url = ''; $st.enviado = $false
+        $bAbrir.Enabled = $false; $bCopiar.Enabled = $false; $tCodigo.Enabled = $false; $bEntrar.Enabled = $false; $bNovo.Visible = $false
+        $tCodigo.Text = ''
+        $lStatus.ForeColor = [Drawing.SystemColors]::ControlText
+        $lStatus.Text = 'Preparando o login...'
+        try { $st.p = Start-ProcessoLogin $r $saida }
+        catch { $lStatus.ForeColor = [Drawing.Color]::Firebrick; $lStatus.Text = "Não consegui iniciar o login: $($_.Exception.Message)"; $bNovo.Visible = $true }
+    }
+
+    $relogioL = New-Object Windows.Forms.Timer
+    $relogioL.Interval = 500
+    $relogioL.Add_Tick({
+        $txt = Read-Compartilhado $saida
+        if (-not $st.url -and $txt -match '(https://[^\s\x1b\x07"]+/oauth/authorize[^\s\x1b\x07"]*)') {
+            $st.url = $Matches[1]
+            $bAbrir.Enabled = $true; $bCopiar.Enabled = $true; $tCodigo.Enabled = $true; $bEntrar.Enabled = $true
+            $lStatus.Text = 'Pronto. Clique no botão do passo 1.'
         }
-        Wait-Um 400
-    }
+        if ($st.p -and $st.p.HasExited) {
+            $relogioL.Stop()
+            if ($txt -match 'Login successful' -or (Get-Login $r.conta).logado) {
+                $st.ok = $true; $d.DialogResult = 'OK'; $d.Close(); return
+            }
+            $erro = (@($txt -split "`r?`n" | Where-Object { $_ -match "Couldn't log in|error|erro|failed" }) | Select-Object -Last 1)
+            if (-not $erro) { $erro = ($txt -split "`r?`n" | Where-Object { $_.Trim() } | Select-Object -Last 1) }
+            $erro = ($erro -replace '\x1b\[[0-9;]*[A-Za-z]', '').Trim()
+            if ($erro -match "wasn't accepted|incomplete|expired|already used") {
+                $erro = 'O código não foi aceito. Ele pode ter sido copiado pela metade, já ter sido usado, ou ser de uma tentativa anterior. Clique em Gerar novo link e faça de novo, usando o link novo.'
+            }
+            $lStatus.ForeColor = [Drawing.Color]::Firebrick
+            $lStatus.Text = "Não deu certo. $erro"
+            $bAbrir.Enabled = $false; $bCopiar.Enabled = $false; $tCodigo.Enabled = $false; $bEntrar.Enabled = $false
+            $bNovo.Visible = $true
+        }
+    })
+
+    $bAbrir.Add_Click({ if ($st.url) { Open-Anonimo $st.url; $lStatus.Text = 'Entre no navegador com a conta certa e autorize. Depois cole o código no passo 2.'; $tCodigo.Focus() } })
+    $bCopiar.Add_Click({ if ($st.url) { [Windows.Forms.Clipboard]::SetText($st.url); $lStatus.Text = 'Link copiado. Cole numa janela anônima do navegador.' } })
+    $bEntrar.Add_Click({
+        $c = ($tCodigo.Text -replace '\s', '').Trim('"', "'", '`')
+        if (-not $c) { $lStatus.Text = 'Cole o código que o site mostrou.'; return }
+        if (-not $st.p -or $st.p.HasExited) { return }
+        try {
+            $st.p.StandardInput.WriteLine($c)
+            $st.p.StandardInput.Flush()
+            $st.enviado = $true
+            $bEntrar.Enabled = $false; $tCodigo.Enabled = $false
+            $lStatus.ForeColor = [Drawing.SystemColors]::ControlText
+            $lStatus.Text = 'Conferindo o código...'
+        } catch { $lStatus.Text = "Não consegui enviar o código: $($_.Exception.Message)" }
+    })
+    $bNovo.Add_Click({ & $iniciar; $relogioL.Start() })
+    $d.Add_Shown({ & $iniciar; $relogioL.Start() })
+
+    [void]$d.ShowDialog()
+    $relogioL.Stop()
+    Stop-Arvore $st.p
+    Remove-Item $saida -Force -ErrorAction SilentlyContinue
+
     $l = Get-Login $r.conta
     if ($l.logado) { Say "  Logado como $($l.email)."; return $true }
-    if (Test-Path $fim) {
-        $rc = (Get-Content $fim -Raw -ErrorAction SilentlyContinue)
-        if ($rc) { $rc = $rc.Trim() }
-        Say "  O login não foi concluído (o claude auth login terminou com código $rc). A mensagem de erro ficou na janela de login."
-    } else {
-        Say '  O login não foi concluído em 15 minutos.'
-    }
+    Say '  O login não foi concluído.'
     return $false
 }
 

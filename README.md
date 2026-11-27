@@ -13,7 +13,7 @@ Ele mostra os remotes configurados na máquina, se cada um está rodando e conec
    - **Não criado** (azul) são remotes sugeridos (de `app/modelos.json`) que ainda não existem neste PC: selecione e clique **Criar**, ou **Remover...** se não quiser neste PC.
    - Tarefas de Remote Control feitas fora do programa aparecem com "Feito fora do programa": **Gerenciar pelo programa** passa a cuidar delas sem derrubar o que está rodando, e **Remover...** para e apaga a tarefa.
    - **Remover...** sempre pede confirmação e mantém o login da conta.
-   - Quando uma conta não está logada, o programa abre o login dela e espera você entrar no navegador.
+   - Quando uma conta não está logada, **Entrar na conta** abre uma janelinha do próprio programa: um botão abre o login numa janela anônima do navegador e uma caixa recebe o código que o site mostra. Sem terminal.
 
 Rodar de novo só confere e conserta: nada que está rodando é derrubado (o nome novo de um remote vale depois de **Reiniciar** ou do próximo boot).
 
