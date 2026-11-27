@@ -113,19 +113,75 @@ function Get-Login($conta) {
     }
 }
 
-# Abre uma janela de login para a conta e espera o usuário terminar.
+# Abre uma janela de terminal visível com o login da conta e espera o usuário terminar.
+# A janela é um .cmd (não depende de PowerShell nem do terminal padrão do Windows) e só fecha
+# sozinha quando o login dá certo; se falhar, mostra o erro e espera uma tecla.
+# A espera não confia no processo da janela (o Terminal do Windows 11 pode trocar de processo):
+# termina quando o .cmd grava o arquivo de fim, quando a conta aparece logada, ou em 15 min.
 function Start-Login($r) {
     if (-not $script:PodeLogar) { Say "  Login necessário em '$($r.nome)': abra o programa neste PC e clique em Entrar na conta."; return $false }
-    $conta = if ($r.conta) { $r.conta } else { $script:PadraoMarcador }
-    $email = if ($r.email) { $r.email } else { '-' }
-    $script = Join-Path $script:AppDir 'login.ps1'
-    $a = "-NoProfile -ExecutionPolicy Bypass -File `"$script`" -Conta `"$conta`" -Nome `"$($r.nome)`" -Email `"$email`" -Claude `"$(Get-ClaudeExe)`""
-    Say "  Abrindo o login da conta de '$($r.nome)'. Entre no navegador; o programa espera."
-    $p = Start-Process powershell.exe -ArgumentList $a -PassThru
-    while (-not $p.HasExited) { Wait-Um 400 }
+    $dir = Get-RcDir $r
+    New-Item -ItemType Directory -Force $dir | Out-Null
+    if ($r.conta) { New-Item -ItemType Directory -Force $r.conta | Out-Null }
+    $cmd = Join-Path $dir 'login.cmd'
+    $fim = Join-Path $dir 'login-fim.txt'
+    Remove-Item $fim -Force -ErrorAction SilentlyContinue
+    $exe = Get-ClaudeExe
+    if (-not $exe -or -not (Test-Path $exe)) { Say '  ERRO: não achei o claude.exe neste PC. Instale o Claude Code e tente de novo.'; return $false }
+    $setConta = if ($r.conta) { "set `"CLAUDE_CONFIG_DIR=$($r.conta)`"" } else { 'set "CLAUDE_CONFIG_DIR="' }
+    $emailArg = if ($r.email) { " --email `"$($r.email)`"" } else { '' }
+    $t = @"
+@echo off
+title Login do Claude - $($r.nome)
+$setConta
+echo.
+echo   Login da conta do remote "$($r.nome)"
+echo.
+echo   O navegador vai abrir na pagina de login do Claude.
+echo   Entre com a conta certa para este remote.
+echo   Se o navegador ja estiver logado em outra conta, saia dela
+echo   ou aperte C aqui para copiar o link e cole numa janela anonima.
+echo.
+"$exe" auth login$emailArg
+set "RC=%errorlevel%"
+echo %RC%> "$fim"
+echo.
+if "%RC%"=="0" (
+  echo   Pronto. Esta janela fecha sozinha.
+  timeout /t 3 >nul
+) else (
+  echo   O login falhou ^(codigo %RC%^). Veja a mensagem acima.
+  echo   Aperte uma tecla para fechar.
+  pause >nul
+)
+"@
+    [IO.File]::WriteAllText($cmd, ($t -replace "`r?`n", "`r`n"), (Get-Oem))
+    Say "  Abrindo o login da conta de '$($r.nome)' numa janela de terminal. Entre no navegador; o programa espera."
+    try {
+        Start-Process -FilePath $env:ComSpec -ArgumentList @('/c', "`"$cmd`"") -WindowStyle Normal | Out-Null
+    } catch {
+        Say "  ERRO ao abrir a janela de login: $($_.Exception.Message)"
+        return $false
+    }
+    $inicio = Get-Date
+    $ultimaChecagem = Get-Date
+    while (((Get-Date) - $inicio).TotalMinutes -lt 15) {
+        if (Test-Path $fim) { break }
+        if (((Get-Date) - $ultimaChecagem).TotalSeconds -ge 5) {
+            $ultimaChecagem = Get-Date
+            if ((Get-Login $r.conta).logado) { break }
+        }
+        Wait-Um 400
+    }
     $l = Get-Login $r.conta
     if ($l.logado) { Say "  Logado como $($l.email)."; return $true }
-    Say '  O login não foi concluído.'
+    if (Test-Path $fim) {
+        $rc = (Get-Content $fim -Raw -ErrorAction SilentlyContinue)
+        if ($rc) { $rc = $rc.Trim() }
+        Say "  O login não foi concluído (o claude auth login terminou com código $rc). A mensagem de erro ficou na janela de login."
+    } else {
+        Say '  O login não foi concluído em 15 minutos.'
+    }
     return $false
 }
 
