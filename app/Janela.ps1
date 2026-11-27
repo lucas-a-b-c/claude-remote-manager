@@ -19,24 +19,8 @@ if ($ConsertarTudo) {
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 [Windows.Forms.Application]::EnableVisualStyles()
 
-# Atualização automática: se o site tem versão mais nova, instala e abre de novo.
+# Atualização: o aviso e o botão ficam na faixa amarela no topo (veja Test-Atualizacao, mais abaixo).
 . (Join-Path $PSScriptRoot 'Atualizacao.ps1')
-if (-not $Captura) {
-    try {
-        $perguntar = {
-            param($nova, $atual, $notas)
-            $txt = "Nova versão $nova disponível (você está na $atual)."
-            if ($notas) { $txt += "`r`n`r`n$notas" }
-            $txt += "`r`n`r`nAtualizar agora? O programa fecha e abre de novo sozinho. Os Remote Control que estão rodando não caem."
-            return ([Windows.Forms.MessageBox]::Show($txt, 'Atualização do Claude Remote Manager', 'YesNo', 'Question') -eq 'Yes')
-        }
-        if (Update-Programa -PodePedirLogin -Confirmar $perguntar) {
-            [void][Windows.Forms.MessageBox]::Show("Pronto, atualizado para a versão $(Get-VersaoLocal). Abrindo de novo.", 'Claude Remote Manager')
-            Start-Process powershell -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-STA', '-File', "`"$PSCommandPath`"")
-            exit
-        }
-    } catch { }
-}
 
 $fonte = New-Object Drawing.Font('Segoe UI', 9.5)
 $form = New-Object Windows.Forms.Form
@@ -48,6 +32,17 @@ $form.Font = $fonte
 
 $topo = New-Object Windows.Forms.Label
 $topo.Dock = 'Top'; $topo.Height = 28; $topo.Padding = New-Object Windows.Forms.Padding(8, 6, 0, 0)
+
+$faixa = New-Object Windows.Forms.Panel
+$faixa.Dock = 'Top'; $faixa.Height = 40; $faixa.BackColor = [Drawing.Color]::FromArgb(255, 236, 160); $faixa.Visible = $false
+$faixaTexto = New-Object Windows.Forms.Label
+$faixaTexto.AutoSize = $false; $faixaTexto.Dock = 'Fill'; $faixaTexto.TextAlign = 'MiddleLeft'; $faixaTexto.Padding = New-Object Windows.Forms.Padding(10, 0, 0, 0)
+$faixaTexto.Font = New-Object Drawing.Font('Segoe UI', 10, [Drawing.FontStyle]::Bold)
+$bAtualizarApp = New-Object Windows.Forms.Button
+$bAtualizarApp.Text = 'Atualizar agora'; $bAtualizarApp.Dock = 'Right'; $bAtualizarApp.Width = 150
+$bAtualizarApp.Font = New-Object Drawing.Font('Segoe UI', 9.5, [Drawing.FontStyle]::Bold)
+$faixa.Controls.Add($faixaTexto); $faixa.Controls.Add($bAtualizarApp)
+$faixaTexto.BringToFront()
 
 $lista = New-Object Windows.Forms.ListView
 $lista.View = 'Details'; $lista.FullRowSelect = $true; $lista.MultiSelect = $false; $lista.HideSelection = $false
@@ -97,6 +92,7 @@ $form.Controls.Add($lista)
 $form.Controls.Add($painel)
 $form.Controls.Add($detalhe)
 $form.Controls.Add($topo)
+$form.Controls.Add($faixa)
 $lista.BringToFront()   # a lista ocupa só o espaço que sobra; o painel de botões fica sempre visível
 $painel.AutoScroll = $true
 
@@ -369,8 +365,41 @@ $bLogs.Add_Click({
     Start-Process explorer.exe $d
 })
 
+# ---------------------------------------------------------------- atualização do programa
+
+$script:Atualizacao = $null
+
+function Test-Atualizacao([switch]$PodePedirLogin) {
+    try { $info = Get-AtualizacaoDisponivel -PodePedirLogin:$PodePedirLogin } catch { $info = $null }
+    $script:Atualizacao = $info
+    if ($info) {
+        $faixaTexto.Text = "Nova versão $($info.versao) disponível (você está na $(Get-VersaoLocal)). $($info.notas)"
+        $faixa.Visible = $true
+    } else { $faixa.Visible = $false }
+}
+
+$bAtualizarApp.Add_Click({
+    if (-not $script:Atualizacao) { return }
+    $bAtualizarApp.Enabled = $false; $bAtualizarApp.Text = 'Atualizando...'
+    $form.UseWaitCursor = $true
+    [Windows.Forms.Application]::DoEvents()
+    if (Install-Atualizacao $script:Atualizacao) {
+        Start-ProgramaDeNovo
+        $form.Close()
+        return
+    }
+    $form.UseWaitCursor = $false
+    $bAtualizarApp.Enabled = $true; $bAtualizarApp.Text = 'Atualizar agora'
+    [void][Windows.Forms.MessageBox]::Show($form, 'Não consegui baixar a atualização agora. Tente de novo em alguns minutos.', 'Atualização', 'OK', 'Warning')
+})
+
+$relogio = New-Object Windows.Forms.Timer
+$relogio.Interval = 10 * 60 * 1000
+$relogio.Add_Tick({ if (-not $form.UseWaitCursor) { Test-Atualizacao } })
+
 function Start-Janela {
     Invoke-Acao { }
+    if (-not $Captura) { Test-Atualizacao -PodePedirLogin; $relogio.Start() }
     if (Get-ModelosPendentes) { Say 'Há remotes "Não criado" (azul): selecione e clique Criar, ou Remover se não quiser neste PC.' }
 }
 

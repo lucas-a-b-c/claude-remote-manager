@@ -1,6 +1,6 @@
 ﻿# Claude Remote Manager - atualização automática pelo site CruzVerbenaGroup.
-# Ao abrir a janela, pergunta ao site qual é a versão publicada. Se for mais nova que a deste PC,
-# pergunta se pode atualizar; se sim, baixa o pacote, instala por cima desta pasta e abre o programa de novo.
+# Com a janela aberta, pergunta ao site qual é a versão publicada (ao abrir e a cada 10 min). Se for mais nova,
+# mostra um aviso com o botão Atualizar agora, que baixa o pacote, instala por cima desta pasta e reabre o programa.
 # O login do site fica salvo por usuário do Windows (criptografado com DPAPI) em
 # %USERPROFILE%\.claude-remote-manager\site-login.xml. Sem internet ou com o site fora do ar, segue sem atualizar.
 
@@ -55,9 +55,9 @@ function Get-VersaoSite([switch]$PodePedirLogin) {
             if (-not $cred) { return $null }
         }
         try {
-            $wc = New-ClienteSite $cred
-            $txt = $wc.DownloadString("$url/api/versao/$($script:AtuApp)")
-            $info = $txt | ConvertFrom-Json
+            $par = $cred.UserName + ':' + $cred.GetNetworkCredential().Password
+            $cab = @{ Authorization = 'Basic ' + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($par)) }
+            $info = Invoke-RestMethod -Uri "$url/api/versao/$($script:AtuApp)" -Headers $cab -UseBasicParsing -TimeoutSec 10 -UserAgent 'claude-remote-manager'
             Save-LoginSite $cred
             $info | Add-Member -NotePropertyName Credencial -NotePropertyValue $cred -Force
             $info | Add-Member -NotePropertyName Site -NotePropertyValue $url -Force
@@ -75,16 +75,17 @@ function Get-VersaoSite([switch]$PodePedirLogin) {
     return $null
 }
 
-# Confere e, se houver versão nova, instala. Devolve $true quando atualizou (quem chamou deve reabrir o programa).
-# -Confirmar: scriptblock que recebe (versaoNova, versaoAtual, notas) e devolve $true para atualizar.
-function Update-Programa([switch]$PodePedirLogin, [scriptblock]$Confirmar) {
+# Devolve as informações da versão publicada se ela for mais nova que a deste PC; senão $null.
+function Get-AtualizacaoDisponivel([switch]$PodePedirLogin) {
     $info = Get-VersaoSite -PodePedirLogin:$PodePedirLogin
-    if (-not $info -or -not $info.versao) { return $false }
-    try { $nova = [version]$info.versao } catch { return $false }
-    $atual = Get-VersaoLocal
-    if ($nova -le $atual) { return $false }
-    if ($Confirmar -and -not (& $Confirmar $nova $atual ([string]$info.notas))) { return $false }
+    if (-not $info -or -not $info.versao) { return $null }
+    try { $nova = [version]$info.versao } catch { return $null }
+    if ($nova -le (Get-VersaoLocal)) { return $null }
+    return $info
+}
 
+# Baixa e instala por cima desta pasta. Devolve $true quando instalou (quem chamou deve reabrir o programa).
+function Install-Atualizacao($info) {
     $tmp = Join-Path $env:TEMP ("crm-atualizacao-" + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Force $tmp | Out-Null
     try {
@@ -102,4 +103,10 @@ function Update-Programa([switch]$PodePedirLogin, [scriptblock]$Confirmar) {
     } finally {
         Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
     }
+}
+
+# Abre o programa de novo (já atualizado) num processo novo.
+function Start-ProgramaDeNovo {
+    $janela = Join-Path $PSScriptRoot 'Janela.ps1'
+    Start-Process powershell -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-STA', '-File', "`"$janela`"")
 }
