@@ -4,11 +4,13 @@ Memória compartilhada entre as contas do Claude que trabalham neste repositóri
 
 ## Em andamento
 
-- 27/11/2026, sessão na nuvem (claude.ai, projeto Remote Manager): planejando o site Jarbas. Plano em `docs/jarbas.md`, esperando o Lucas decidir hospedagem, permissões e roteamento antes de codar.
+(nada)
 
 ## Feito
 
 - 27/11/2026, conta Claude Gufe, PC Letícia (DESKTOP-53QAL6R): primeira versão. Janela (WinForms) + núcleo em PowerShell + `.bat` com elevação. Testado neste PC com remotes de teste: criar do zero (tarefa S4U, subiu e registrou no claude.ai), conferir de novo sem derrubar, conta sem login (grava FALHA-LOGIN e não sobe), adotar tarefa antiga sem matar o processo, reiniciar com nome novo, remover. A janela foi verificada só por dump de estado (a sessão de teste roda na sessão 0, sem área de trabalho).
+
+- 27/11/2026, sessão na nuvem: plano do site Jarbas em `docs/jarbas.md`. Arquivado, o Lucas preferiu focar no app local.
 
 ## Pendente
 

@@ -2,7 +2,7 @@
 
 Site pessoal do Lucas para conversar com um "agente" que distribui pedidos entre as contas do Claude Code e os PCs, mostra quem está fazendo o quê e oferece o download do Claude Remote Manager.
 
-Status: **plano, ainda sem código**. As decisões abertas estão no fim.
+Status: **arquivado em 27/11/2026**. O Lucas desistiu do site; o foco é o app local. Fica aqui só como referência.
 
 ## O que dá e o que não dá hoje (verificado no Claude Code 2.1.x)
 
