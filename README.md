@@ -1,0 +1,47 @@
+# Claude Remote Manager
+
+Programa com janela para gerenciar os **Remote Control do Claude Code** de um PC Windows, com várias contas lado a lado.
+
+Ele mostra os remotes configurados na máquina, se cada um está rodando e conectado, qual conta está logada, e permite criar, conferir, consertar, entrar na conta, testar, reiniciar e remover. Cada remote sobe com o Windows **sem login e sem janela** (tarefa agendada S4U) e é reiniciado sozinho se cair.
+
+## Como usar
+
+1. Clone este repositório no PC (por exemplo em `C:\Projetos\claude-remote-manager`).
+2. Dê dois cliques em **`Gerenciar Remote Control.bat`** e aceite o pedido de administrador.
+3. Na janela:
+   - Linhas **azuis** são remotes sugeridos (de `app/modelos.json`) que ainda não existem neste PC: selecione e clique **Criar este remote**, ou clique **Consertar todos**.
+   - Linhas **cinza** são tarefas antigas de Remote Control feitas à mão: **Adotar** passa a gerenciá-las sem derrubar o que está rodando.
+   - Quando uma conta não está logada, o programa abre o login dela e espera você entrar no navegador.
+
+Rodar de novo só confere e conserta: nada que está rodando é derrubado (o nome novo de um remote vale depois de **Reiniciar** ou do próximo boot).
+
+Sem janela: `"Gerenciar Remote Control.bat" /consertar` (abre login se precisar) ou `/consertar-sem-login` (só avisa; para uma sessão remota rodar).
+
+## Como funciona
+
+- **Conta** = pasta de configuração do Claude Code (`CLAUDE_CONFIG_DIR`, o jeito documentado de usar várias contas: cada pasta tem seu login, settings e histórico). A conta `padrao` é a `%USERPROFILE%\.claude` normal; as outras ficam em `%USERPROFILE%\.claude-contas\<nome>`. Uma conta nova recebe uma cópia do `settings.json` da padrão.
+- **Remote** = nome + conta + pasta de trabalho + modo (`same-dir`, `worktree` ou `session`). Fica salvo em `%USERPROFILE%\.claude-remote-manager\remotes.json` (por PC, fora do repositório).
+- Para cada remote o programa gera `%USERPROFILE%\.claude-remote-manager\rc\<id>\iniciar.cmd` e a tarefa agendada que o chama: no boot, a cada 5 min e ao voltar da suspensão, reiniciando a cada 1 min se cair, uma cópia só. Os logs ficam na mesma pasta (`remote-control.log`, `debug.log`); transcrições com mais de 7 dias são apagadas a cada início.
+- Se o login expirar, o lançador grava `FALHA-LOGIN.txt` na pasta do remote, e a janela mostra o problema e oferece **Entrar na conta**.
+- A pasta de trabalho é marcada como confiável na conta (sem terminal o Remote Control recusa pasta não confiável).
+- Atualizar a tarefa agendada não derruba o processo que já está rodando (testado).
+
+## Modelos
+
+`app/modelos.json` lista os remotes sugeridos e a pasta padrão:
+
+```json
+{
+  "pastaPadrao": "C:\\Projetos",
+  "remotes": [
+    { "nome": "Claude Gufe", "conta": "padrao" },
+    { "nome": "Claude Cruz Verbena", "conta": "cruz-verbena" }
+  ]
+}
+```
+
+Ao criar um sugerido, se já existe uma tarefa antiga de Remote Control da mesma conta e pasta, ela é adotada em vez de duplicada.
+
+## Requisitos
+
+Windows 10/11, Windows PowerShell 5.1, Claude Code instalado (`%USERPROFILE%\.local\bin\claude.exe` ou no PATH) e uma conta claude.ai com assinatura (Remote Control não funciona com chave de API nem com `CLAUDE_CODE_OAUTH_TOKEN`).
