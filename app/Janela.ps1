@@ -19,9 +19,21 @@ if ($ConsertarTudo) {
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 [Windows.Forms.Application]::EnableVisualStyles()
 
+# Atualização automática: se o site tem versão mais nova, instala e abre de novo.
+. (Join-Path $PSScriptRoot 'Atualizacao.ps1')
+if (-not $Captura) {
+    try {
+        if (Update-Programa -PodePedirLogin) {
+            [void][Windows.Forms.MessageBox]::Show("Programa atualizado para a versão $(Get-VersaoLocal). Abrindo de novo.", 'Claude Remote Manager')
+            Start-Process powershell -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-STA', '-File', "`"$PSCommandPath`"")
+            exit
+        }
+    } catch { }
+}
+
 $fonte = New-Object Drawing.Font('Segoe UI', 9.5)
 $form = New-Object Windows.Forms.Form
-$form.Text = "Claude Remote Manager - $env:COMPUTERNAME"
+$form.Text = "Claude Remote Manager v$(Get-VersaoLocal) - $env:COMPUTERNAME"
 $form.Size = New-Object Drawing.Size(1180, 680)
 $form.MinimumSize = New-Object Drawing.Size(900, 500)
 $form.StartPosition = 'CenterScreen'

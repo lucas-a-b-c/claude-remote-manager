@@ -26,6 +26,12 @@ Sem janela: `"Gerenciar Remote Control.bat" /consertar` (abre login se precisar)
 - A pasta de trabalho é marcada como confiável na conta (sem terminal o Remote Control recusa pasta não confiável).
 - Atualizar a tarefa agendada não derruba o processo que já está rodando (testado).
 
+## Atualização automática
+
+Ao abrir a janela, o programa pergunta ao site **CruzVerbenaGroup** (endereço em `app/site.json`) qual é a versão publicada. Se for mais nova que `app/versao.txt`, baixa o pacote, instala por cima da pasta e abre de novo. Na primeira vez ele pede o login do site e guarda criptografado para o seu usuário do Windows (`%USERPROFILE%\.claude-remote-manager\site-login.xml`). Sem internet, segue sem atualizar. O modo sem janela (`/consertar`) não atualiza.
+
+Para publicar uma versão nova: `powershell -ExecutionPolicy Bypass -File ferramentas\Publicar-Versao.ps1 -Versao 1.0.1 -Notas "O que mudou" -Site C:\Projetos\CruzVerbenaGroup`, depois commit e push nos dois repositórios (ou peça ao Claude).
+
 ## Modelos
 
 `app/modelos.json` lista os remotes sugeridos e a pasta padrão:
