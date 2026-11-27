@@ -4,7 +4,7 @@ Memória compartilhada entre as contas do Claude que trabalham neste repositóri
 
 ## Em andamento
 
-(nada)
+- 27/11/2026, sessão na nuvem (claude.ai, projeto Remote Manager): planejando o site Jarbas. Plano em `docs/jarbas.md`, esperando o Lucas decidir hospedagem, permissões e roteamento antes de codar.
 
 ## Feito
 
