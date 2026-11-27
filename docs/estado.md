@@ -14,7 +14,7 @@ Memória compartilhada entre as contas do Claude que trabalham neste repositóri
 
 - 27/11/2026, sessão na nuvem (thread do site CruzVerbenaGroup): site https://site-production-9ae5c440.up.railway.app (repo `CruzVerbenaGroup`, login nas variáveis do Railway) com o download do app e `/api/versao/claude-remote-manager`. Versão 1.0.0: atualização automática ao abrir a janela (`app/Atualizacao.ps1`). Versão 1.1.0/1.1.1: aviso de versão nova numa faixa amarela no topo com botão **Atualizar agora** (checa ao abrir e a cada 10 min, reabre sozinho); **Remover...** com confirmação também para tarefas feitas fora do programa (ex.: MedievalOnline) e para sugestões; estados simples (Ativo, Parado, Sem login, Erro, Não criado) e coluna "O que fazer"; lista não cobre mais o painel de botões. Não testado no Windows (o container não tem PowerShell): conferir a janela, o Remover numa tarefa solta e a faixa de atualização.
 
-- 27/11/2026, sessão na nuvem: 1.1.2 corrige "Entrar na conta" (no PC Lucas a janela piscava e fechava). O login agora abre um `.cmd` visível (`rc\<id>\login.cmd`) que mostra o erro e espera uma tecla se falhar; o programa espera pelo arquivo de fim ou pela conta logada, sem depender do processo da janela. `app/login.ps1` saiu. Não testado no Windows.
+- 27/11/2026, sessão na nuvem: 1.1.2 corrige "Entrar na conta" (no PC Lucas a janela piscava e fechava). O login agora abre um `.cmd` visível (`rc\<id>\login.cmd`) que mostra o erro e espera uma tecla se falhar; o programa espera pelo arquivo de fim ou pela conta logada, sem depender do processo da janela. `app/login.ps1` saiu. 1.1.3: botão **Verificar atualização** (seção Geral). Não testado no Windows.
 
 ## Pendente
 

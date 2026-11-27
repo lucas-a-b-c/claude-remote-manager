@@ -87,6 +87,7 @@ $painel.Controls.Add($sep)
 $bNovo      = Add-Botao 'novo'      'Novo remote...' 'Cria um Remote Control novo (nome, conta e pasta).'
 $bTudo      = Add-Botao 'tudo'      'Criar e conferir todos' 'Cria os que ainda não existem e confere/conserta todos.'
 $bAtualizar = Add-Botao 'atualizar' 'Recarregar lista' 'Lê de novo o estado de tudo.'
+$bVerificar = Add-Botao 'verificar' 'Verificar atualização' 'Confere agora no site se há versão nova do programa.'
 
 $form.Controls.Add($lista)
 $form.Controls.Add($painel)
@@ -391,6 +392,17 @@ $bAtualizarApp.Add_Click({
     $form.UseWaitCursor = $false
     $bAtualizarApp.Enabled = $true; $bAtualizarApp.Text = 'Atualizar agora'
     [void][Windows.Forms.MessageBox]::Show($form, 'Não consegui baixar a atualização agora. Tente de novo em alguns minutos.', 'Atualização', 'OK', 'Warning')
+})
+
+$bVerificar.Add_Click({
+    $form.UseWaitCursor = $true; [Windows.Forms.Application]::DoEvents()
+    Test-Atualizacao -PodePedirLogin
+    $form.UseWaitCursor = $false
+    if ($script:Atualizacao) { Say "Nova versão $($script:Atualizacao.versao) disponível: clique em Atualizar agora, na faixa amarela." }
+    elseif (Get-SiteUrl) {
+        if (Get-VersaoSite) { Say "Você já está na versão mais nova ($(Get-VersaoLocal))." }
+        else { Say 'Não consegui consultar o site agora (sem internet ou sem login do site).' }
+    }
 })
 
 $relogio = New-Object Windows.Forms.Timer
