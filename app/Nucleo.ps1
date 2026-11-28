@@ -127,16 +127,15 @@ function Find-NavegadorAnonimo {
     return $null
 }
 
-# Abre a URL numa janela anônima, como usuário comum (o programa roda como administrador).
+# Abre a URL numa janela anônima. Nunca espera o navegador (esperar travava a janela de login).
 function Open-Anonimo([string]$url) {
     $n = Find-NavegadorAnonimo
-    if (-not $n) { Start-Process $url; return }
     try {
-        $linha = "\`"$($n.exe)\`" $($n.arg) \`"$url\`""
-        $p = Start-Process runas.exe -ArgumentList @('/trustlevel:0x20000', "`"$linha`"") -WindowStyle Hidden -PassThru -Wait
-        if ($p.ExitCode -eq 0) { return }
-    } catch { }
-    Start-Process -FilePath $n.exe -ArgumentList @($n.arg, "`"$url`"")
+        if ($n) { Start-Process -FilePath $n.exe -ArgumentList @($n.arg, "`"$url`"") | Out-Null }
+        else { Start-Process $url | Out-Null }
+    } catch {
+        Say "  Não consegui abrir o navegador: $($_.Exception.Message). Use Copiar link."
+    }
 }
 
 function Read-Compartilhado([string]$arq) {
@@ -244,7 +243,7 @@ function Start-Login($r) {
         }
     })
 
-    $bAbrir.Add_Click({ if ($st.url) { Open-Anonimo $st.url; $lStatus.Text = 'Entre no navegador com a conta certa e autorize. Depois cole o código no passo 2.'; $tCodigo.Focus() } })
+    $bAbrir.Add_Click({ if ($st.url) { Open-Anonimo $st.url; $lStatus.Text = 'Entre no navegador com a conta certa e autorize. Depois cole o código no passo 2. Se o navegador não abriu, use Copiar link e cole numa janela anônima.'; [void]$tCodigo.Focus() } })
     $bCopiar.Add_Click({ if ($st.url) { [Windows.Forms.Clipboard]::SetText($st.url); $lStatus.Text = 'Link copiado. Cole numa janela anônima do navegador.' } })
     $bEntrar.Add_Click({
         $c = ($tCodigo.Text -replace '\s', '').Trim('"', "'", '`')

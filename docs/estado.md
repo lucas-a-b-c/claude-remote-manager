@@ -20,6 +20,8 @@ Memória compartilhada entre as contas do Claude que trabalham neste repositóri
 
 - 28/11/2026, sessão na nuvem: 1.2.1, resumo geral no topo e no log ("Tudo certo" só quando todos estão ativos; senão lista quem precisa de atenção) e detalhes rotulados com o nome do remote. No PC Lucas o log mostrava "Tudo certo" da Gufe com a Cruz Verbena sem login. Não testado no Windows.
 
+- 28/11/2026, sessão na nuvem: 1.2.2, "Abrir em janela anônima" travava a janelinha de login (o `runas /trustlevel` com `-Wait` ficava esperando o navegador). Agora abre o Edge/Chrome direto, sem esperar. Não testado no Windows.
+
 ## Pendente
 
 - Publicar versão nova: `ferramentas/Publicar-Versao.ps1` (ou pedir ao Claude), commit e push no app e no site.
