@@ -18,9 +18,23 @@ function Say([string]$m) {
     if ($script:OnLog) { & $script:OnLog $m } else { Write-Host $m }
 }
 
+# Espera sem travar a janela: dorme em pedaços curtos e deixa a janela responder entre eles.
 function Wait-Um([int]$ms = 300) {
-    if ($script:OnEspera) { & $script:OnEspera }
-    Start-Sleep -Milliseconds $ms
+    $fim = (Get-Date).AddMilliseconds($ms)
+    do {
+        if ($script:OnEspera) { & $script:OnEspera }
+        Start-Sleep -Milliseconds 40
+    } while ((Get-Date) -lt $fim)
+}
+
+# Mostra no registro as últimas linhas do log do Remote Control (para saber por que não subiu).
+function Show-FimDoLog($r, [int]$linhas = 8) {
+    $log = Join-Path (Get-RcDir $r) 'remote-control.log'
+    if (-not (Test-Path $log)) { Say '  (o remote-control.log ainda não existe: o Windows não chegou a rodar o lançador)'; return }
+    $t = @(Get-Content $log -Tail 40 -ErrorAction SilentlyContinue | ForEach-Object { ($_ -replace '\x1b\[[0-9;?]*[A-Za-z]', '').Trim() } | Where-Object { $_ })
+    if (-not $t.Count) { Say '  (o remote-control.log está vazio)'; return }
+    Say '  Últimas linhas do remote-control.log:'
+    foreach ($l in ($t | Select-Object -Last $linhas)) { Say "    $l" }
 }
 
 function Test-Admin {
@@ -291,7 +305,12 @@ function Start-Login($r) {
     Stop-Arvore $st.p
 
     $l = Get-Login $r.conta
-    if ($l.logado) { Say "  Logado como $($l.email)."; return $true }
+    if ($l.logado) {
+        Say "  Logado como $($l.email)."
+        # Login novo: a marca de falha antiga não vale mais (senão o programa pediria login de novo).
+        foreach ($f in 'FALHA-LOGIN.txt', 'falha-desde.txt') { Remove-Item (Join-Path $dir $f) -Force -ErrorAction SilentlyContinue }
+        return $true
+    }
     Say '  O login não foi concluído.'
     return $false
 }
@@ -644,8 +663,8 @@ function Start-Remote($r) {
     Say '  Tarefa iniciada; esperando o Remote Control registrar no claude.ai...'
     switch (Wait-Registro $r) {
         'ok'    { Say "  OK: '$($r.nome)' subiu e está conectado."; return $true }
-        'login' { Say '  O Remote Control não subiu por falta de login.'; return $false }
-        default { Say '  Não vi o registro em 90 s. Veja remote-control.log na pasta de logs.'; return $false }
+        'login' { Say '  O Remote Control não subiu: o Claude diz que a conta não está logada.'; Show-FimDoLog $r; return $false }
+        default { Say '  Não vi o registro em 90 s.'; Show-FimDoLog $r; return $false }
     }
 }
 

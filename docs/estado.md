@@ -34,6 +34,8 @@ Memória compartilhada entre as contas do Claude que trabalham neste repositóri
 
 - 28/11/2026, sessão na nuvem: 1.5.0, visual caprichado: cabeçalho escuro com título, PC/versões e o resumo geral numa etiqueta verde/vermelha; lista desenhada pelo programa (OwnerDraw) com cabeçalho discreto, linhas altas, seleção azul-clara e o Estado como etiqueta colorida com bolinha; barra de ações e registro em cinza-claro. Não testado no Windows.
 
+- 28/11/2026, sessão na nuvem: 1.5.1, a janela parecia travada enquanto esperava o Remote Control registrar (Wait-Um dormia 1 s por vez); agora dorme em pedaços de 40 ms. Depois de um login bem-sucedido, apaga FALHA-LOGIN.txt (antes pedia login de novo). Se não registrar, mostra as últimas linhas do remote-control.log no registro. No PC Lucas a Cruz Verbena logou (cruzverbenagroup@gmail.com) mas não vimos ainda se registrou.
+
 ## Pendente
 
 - Publicar versão nova: `ferramentas/Publicar-Versao.ps1` (ou pedir ao Claude), commit e push no app e no site.
