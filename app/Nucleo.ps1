@@ -43,7 +43,7 @@ function Show-FimDoLog($r, [int]$linhas = 8) {
         Say "  Últimas linhas do ${nome}:"
         foreach ($l in ($t | Select-Object -Last $linhas)) { Say "    $l" }
     }
-    if (-not $achou) { Say "  (nenhum log em $dir: o Windows não chegou a rodar o lançador)" }
+    if (-not $achou) { Say "  (nenhum log em ${dir}: o Windows não chegou a rodar o lançador)" }
 }
 
 function Test-Admin {

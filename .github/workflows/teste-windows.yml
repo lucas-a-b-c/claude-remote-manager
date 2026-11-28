@@ -27,6 +27,16 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: exe
+      - name: Conferir a sintaxe de todos os .ps1
+        shell: powershell
+        run: |
+          $ruim = 0
+          foreach ($f in Get-ChildItem app, ferramentas -Filter *.ps1 -Recurse) {
+            $erros = $null
+            [void][Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$null, [ref]$erros)
+            foreach ($e in $erros) { Write-Host "$($f.Name):$($e.Extent.StartLineNumber): $($e.Message)"; $ruim++ }
+          }
+          if ($ruim) { exit 1 }
       - name: Instalar o Claude Code
         shell: powershell
         run: |
