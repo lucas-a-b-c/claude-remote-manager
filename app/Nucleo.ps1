@@ -168,6 +168,10 @@ function Start-ProcessoLogin($r, [string]$saida) {
     $psi.UseShellExecute = $false
     $psi.RedirectStandardInput = $true
     $psi.CreateNoWindow = $true
+    # O claude abre o navegador sozinho (na janela normal, que pode estar logada na conta errada).
+    # Ele usa o programa da variável BROWSER: apontamos para um que não faz nada (where.exe só
+    # procura um arquivo e sai). O navegador só abre quando a pessoa clica no botão.
+    $psi.EnvironmentVariables['BROWSER'] = Join-Path $env:WINDIR 'System32\where.exe'
     if ($r.conta) { $psi.EnvironmentVariables['CLAUDE_CONFIG_DIR'] = $r.conta }
     elseif ($psi.EnvironmentVariables.ContainsKey('CLAUDE_CONFIG_DIR')) { $psi.EnvironmentVariables.Remove('CLAUDE_CONFIG_DIR') }
     return [Diagnostics.Process]::Start($psi)
@@ -199,7 +203,7 @@ function Start-Login($r) {
     }
     [void](New-Rotulo "1. Abra o login e entre com a conta certa para '$($r.nome)'." 14 22 $true)
     $nomeNav = if ($nav) { "Abrir em janela anônima ($($nav.nome))" } else { 'Abrir no navegador' }
-    [void](New-Rotulo 'A janela anônima evita entrar sem querer com a conta que já está logada no navegador. Se abrir sozinha uma aba do Claude logada na conta errada, feche essa aba.' 38 40)
+    [void](New-Rotulo 'A janela anônima evita entrar sem querer com a conta que já está logada no navegador. Se mesmo assim abrir sozinha uma aba comum do Claude, feche essa aba.' 38 40)
     $bAbrir = New-Object Windows.Forms.Button; $bAbrir.Text = $nomeNav; $bAbrir.Location = New-Object Drawing.Point(16, 84); $bAbrir.Size = New-Object Drawing.Size(330, 34); $bAbrir.Enabled = $false
     $bCopiar = New-Object Windows.Forms.Button; $bCopiar.Text = 'Copiar link'; $bCopiar.Location = New-Object Drawing.Point(356, 84); $bCopiar.Size = New-Object Drawing.Size(120, 34); $bCopiar.Enabled = $false
     $d.Controls.Add($bAbrir); $d.Controls.Add($bCopiar)

@@ -28,6 +28,8 @@ Memória compartilhada entre as contas do Claude que trabalham neste repositóri
 
 - 28/11/2026, sessão na nuvem: 1.3.2, a atualização só troca a pasta `app` e atualiza o `.bat`/README só se ainda existem. O zip do site passa a ter só `app/` (`git archive HEAD app`), com `app/Abrir.bat` para instalação nova. Não testado no Windows.
 
+- 28/11/2026, sessão na nuvem: 1.3.3, o `claude auth login` abria sozinho o navegador normal. Agora roda com `BROWSER=%WINDIR%\System32\where.exe` (no código do CLI para Linux a variável BROWSER substitui o abridor; no Windows não confirmado). Não testado no Windows.
+
 ## Pendente
 
 - Publicar versão nova: `ferramentas/Publicar-Versao.ps1` (ou pedir ao Claude), commit e push no app e no site.
