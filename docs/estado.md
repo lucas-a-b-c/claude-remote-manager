@@ -46,6 +46,8 @@ Memória compartilhada entre as contas do Claude que trabalham neste repositóri
 
 - 28/11/2026, sessão na nuvem: 1.5.6, o zip do site traz o `Claude Remote Manager.exe` pronto na raiz (Lucas: "pq já não baixa com o exe?"): extrair e abrir. O .exe é compilado na publicação com o Mono (`ferramentas/Gerar-Exe.sh`); o lançador carrega o PowerShell do Windows por reflexão (não precisa dele para compilar) e, como o mcs não põe manifesto, pede administrador sozinho (reabre com runas). A atualização troca também o .exe (renomeia o aberto para .old, o novo apaga). O PC só compila o .exe se ele faltar. Tirado o Instalar.bat da 1.5.5. Não testado no Windows.
 
+- 28/11/2026, sessão na nuvem: 1.5.7, as versões 1.5.2 a 1.5.6 estavam quebradas por um erro de sintaxe no Nucleo.ps1 (`$dir:` dentro de uma string; o PowerShell lê como unidade de disco). Agora há teste de verdade no Windows: `.github/workflows/teste-windows.yml` gera o .exe com o Mono, confere a sintaxe de todos os .ps1, instala o Claude Code e abre o .exe em modo de teste (`CRM_TESTE=<arquivo>`, `ferramentas/Teste-Windows.ps1`), exigindo lista carregada sem erro. Passou (leitura em 6 s, em segundo plano). Publicar só com esse teste verde. A janela também mostra o passo da leitura quando demora.
+
 ## Pendente
 
 - Publicar versão nova: `ferramentas/Publicar-Versao.ps1` (ou pedir ao Claude), commit e push no app e no site.
