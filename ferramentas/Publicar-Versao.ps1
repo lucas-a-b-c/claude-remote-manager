@@ -23,8 +23,11 @@ $downloads = Join-Path $Site 'downloads'
 New-Item -ItemType Directory -Force $downloads | Out-Null
 $zip = Join-Path $downloads 'claude-remote-manager.zip'
 if (Test-Path $zip) { Remove-Item $zip -Force }
-# O pacote leva a pasta app e o Instalar.bat (para PC novo). A atualização só troca a pasta app.
-$itens = @((Join-Path $raiz 'app'), (Join-Path $raiz 'Instalar.bat'))
+# O pacote leva a pasta app e o "Claude Remote Manager.exe" pronto (gerado por ferramentas/Gerar-Exe.sh,
+# ou o que estiver na raiz). Basta extrair e abrir o .exe.
+$exePronto = Join-Path $raiz 'Claude Remote Manager.exe'
+if (-not (Test-Path $exePronto)) { throw "Falta $exePronto (gere com ferramentas/Gerar-Exe.sh ou abra o programa uma vez)." }
+$itens = @((Join-Path $raiz 'app'), $exePronto)
 Compress-Archive -Path $itens -DestinationPath $zip
 
 $todos = Get-Content $jsonSite -Raw -Encoding UTF8 | ConvertFrom-Json

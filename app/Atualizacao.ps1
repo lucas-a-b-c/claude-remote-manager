@@ -122,7 +122,12 @@ function Install-Atualizacao($info) {
         Copy-Item -Path (Join-Path $dest 'app\*') -Destination $PSScriptRoot -Recurse -Force
         foreach ($f in Get-ChildItem $dest -File) {
             $alvo = Join-Path $script:AtuRaiz $f.Name
-            if (Test-Path $alvo) { Copy-Item $f.FullName $alvo -Force }
+            if ($f.Extension -eq '.exe') {
+                # O .exe está aberto agora: o Windows deixa renomear, então o antigo vira .old (o novo apaga depois).
+                if (Test-Path $alvo) { Move-Item $alvo "$alvo.old" -Force }
+                Copy-Item $f.FullName $alvo -Force
+                Remove-Item (Join-Path (Join-Path $env:USERPROFILE '.claude-remote-manager') 'exe-falhou.txt') -Force -ErrorAction SilentlyContinue
+            } elseif (Test-Path $alvo) { Copy-Item $f.FullName $alvo -Force }
         }
         return $true
     } catch {

@@ -1,6 +1,6 @@
 ﻿# Claude Remote Manager - gera e usa o "Claude Remote Manager.exe".
-# O .exe é compilado aqui mesmo no PC com o csc.exe do .NET Framework que vem no Windows
-# (nada binário no repositório). Ele é refeito quando o Lancador.cs muda (ex.: depois de uma atualização).
+# O .exe já vem pronto no zip do site (e é trocado pelas atualizações). Só se ele faltar, é compilado
+# aqui mesmo no PC com o csc.exe do .NET Framework que vem no Windows.
 
 $script:ExeRaiz    = Split-Path $PSScriptRoot -Parent
 $script:ExeArquivo = Join-Path $script:ExeRaiz 'Claude Remote Manager.exe'
@@ -21,12 +21,11 @@ function Get-HashFonte {
     return $txt
 }
 
-# Compila o .exe se ele não existe ou se o código dele mudou. Devolve $true se o .exe está pronto.
+# Compila o .exe só se ele não existe. Devolve $true se o .exe está pronto.
 function Update-Executavel {
+    if (Test-Path $script:ExeArquivo) { return $true }
     if (-not (Test-Path $script:ExeFonte)) { return $false }
     $hash = Get-HashFonte
-    $marca = if (Test-Path $script:ExeMarca) { (Get-Content $script:ExeMarca -Raw).Trim() } else { '' }
-    if ((Test-Path $script:ExeArquivo) -and $marca -eq $hash) { return $true }
     $csc = Get-Csc
     if (-not $csc) { return (Test-Path $script:ExeArquivo) }
     $sma = [PSObject].Assembly.Location

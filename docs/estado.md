@@ -44,6 +44,8 @@ Memória compartilhada entre as contas do Claude que trabalham neste repositóri
 
 - 28/11/2026, sessão na nuvem: 1.5.5, instalação em PC novo: o zip do site tem `Instalar.bat` na raiz (pede administrador e chama `app\Instalar.ps1`), que copia a pasta app para `%LOCALAPPDATA%\Programs\Claude Remote Manager`, gera o .exe, cria atalhos na área de trabalho e no menu Iniciar e abre o programa. A atualização continua trocando só a pasta app (o Instalar.bat não vai para a pasta instalada). A página do site mostra os 3 passos. Não testado no Windows.
 
+- 28/11/2026, sessão na nuvem: 1.5.6, o zip do site traz o `Claude Remote Manager.exe` pronto na raiz (Lucas: "pq já não baixa com o exe?"): extrair e abrir. O .exe é compilado na publicação com o Mono (`ferramentas/Gerar-Exe.sh`); o lançador carrega o PowerShell do Windows por reflexão (não precisa dele para compilar) e, como o mcs não põe manifesto, pede administrador sozinho (reabre com runas). A atualização troca também o .exe (renomeia o aberto para .old, o novo apaga). O PC só compila o .exe se ele faltar. Tirado o Instalar.bat da 1.5.5. Não testado no Windows.
+
 ## Pendente
 
 - Publicar versão nova: `ferramentas/Publicar-Versao.ps1` (ou pedir ao Claude), commit e push no app e no site.
