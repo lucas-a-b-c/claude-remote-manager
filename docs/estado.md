@@ -30,6 +30,8 @@ Memória compartilhada entre as contas do Claude que trabalham neste repositóri
 
 - 28/11/2026, sessão na nuvem: 1.3.3, o `claude auth login` abria sozinho o navegador normal. Agora roda com `BROWSER=%WINDIR%\System32\where.exe` (no código do CLI para Linux a variável BROWSER substitui o abridor; no Windows não confirmado). Não testado no Windows.
 
+- 28/11/2026, sessão na nuvem: 1.4.0, visual novo. Menu superior (Arquivo, Remotes, Configurações, Ajuda) com as ações gerais e configurações (recarregar F5, novo remote Ctrl+N, criar e conferir todos, pastas, trocar login do site, verificar atualização, sobre). Ações do remote selecionado numa barra acima da lista e no botão direito; sem painel lateral com rolagem. Linhas mais altas, última coluna ocupa o espaço, registro embaixo com título. Não testado no Windows.
+
 ## Pendente
 
 - Publicar versão nova: `ferramentas/Publicar-Versao.ps1` (ou pedir ao Claude), commit e push no app e no site.

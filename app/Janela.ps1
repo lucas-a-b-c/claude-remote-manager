@@ -26,81 +26,140 @@ Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 . (Join-Path $PSScriptRoot 'Executavel.ps1')
 if (-not $Captura -and (Switch-ParaExecutavel)) { exit }
 
-$fonte = New-Object Drawing.Font('Segoe UI', 9.5)
+$fonte = New-Object Drawing.Font('Segoe UI', 10)
+$fonteNegrito = New-Object Drawing.Font('Segoe UI', 10, [Drawing.FontStyle]::Bold)
 $form = New-Object Windows.Forms.Form
 $form.Text = "Claude Remote Manager v$(Get-VersaoLocal) - $env:COMPUTERNAME"
-$form.Size = New-Object Drawing.Size(1180, 680)
-$form.MinimumSize = New-Object Drawing.Size(900, 500)
+$form.Size = New-Object Drawing.Size(1200, 700)
+$form.MinimumSize = New-Object Drawing.Size(900, 520)
 $form.StartPosition = 'CenterScreen'
+$form.BackColor = [Drawing.Color]::White
 if ($env:CRM_EXE) { try { $form.Icon = [Drawing.Icon]::ExtractAssociatedIcon($env:CRM_EXE) } catch { } }
 $form.Font = $fonte
 
-$topo = New-Object Windows.Forms.Label
-$topo.Dock = 'Top'; $topo.Height = 28; $topo.Font = New-Object Drawing.Font('Segoe UI', 9.5, [Drawing.FontStyle]::Bold); $topo.Padding = New-Object Windows.Forms.Padding(8, 6, 0, 0)
+# ---------------------------------------------------------------- menu superior (ações gerais e configurações)
+$menu = New-Object Windows.Forms.MenuStrip
+$menu.Font = $fonte; $menu.Padding = New-Object Windows.Forms.Padding(6, 3, 0, 3)
+function Add-Menu($pai, $texto, $atalho) {
+    $i = New-Object Windows.Forms.ToolStripMenuItem($texto)
+    if ($atalho) { $i.ShortcutKeys = $atalho }
+    if ($pai -is [Windows.Forms.MenuStrip]) { [void]$pai.Items.Add($i) } else { [void]$pai.DropDownItems.Add($i) }
+    return $i
+}
+$mArquivo   = Add-Menu $menu 'Arquivo'
+$bAtualizar = Add-Menu $mArquivo 'Recarregar lista' ([Windows.Forms.Keys]::F5)
+[void]$mArquivo.DropDownItems.Add((New-Object Windows.Forms.ToolStripSeparator))
+$mSair      = Add-Menu $mArquivo 'Sair'
+$mRemotes   = Add-Menu $menu 'Remotes'
+$bNovo      = Add-Menu $mRemotes 'Novo remote...' ([Windows.Forms.Keys]::Control -bor [Windows.Forms.Keys]::N)
+$bTudo      = Add-Menu $mRemotes 'Criar e conferir todos'
+$mConfig    = Add-Menu $menu 'Configurações'
+$mPastaApp  = Add-Menu $mConfig 'Abrir pasta do programa'
+$mPastaDados = Add-Menu $mConfig 'Abrir pasta de dados (remotes e logs)'
+[void]$mConfig.DropDownItems.Add((New-Object Windows.Forms.ToolStripSeparator))
+$mLoginSite = Add-Menu $mConfig 'Trocar login do site...'
+$mAjuda     = Add-Menu $menu 'Ajuda'
+$bVerificar = Add-Menu $mAjuda 'Verificar atualização'
+$mSite      = Add-Menu $mAjuda 'Abrir site CruzVerbenaGroup'
+[void]$mAjuda.DropDownItems.Add((New-Object Windows.Forms.ToolStripSeparator))
+$mSobre     = Add-Menu $mAjuda 'Sobre'
+$form.MainMenuStrip = $menu
 
+# ---------------------------------------------------------------- faixa de atualização
 $faixa = New-Object Windows.Forms.Panel
-$faixa.Dock = 'Top'; $faixa.Height = 40; $faixa.BackColor = [Drawing.Color]::FromArgb(255, 236, 160); $faixa.Visible = $false
+$faixa.Dock = 'Top'; $faixa.Height = 42; $faixa.BackColor = [Drawing.Color]::FromArgb(255, 236, 160); $faixa.Visible = $false
 $faixaTexto = New-Object Windows.Forms.Label
-$faixaTexto.AutoSize = $false; $faixaTexto.Dock = 'Fill'; $faixaTexto.TextAlign = 'MiddleLeft'; $faixaTexto.Padding = New-Object Windows.Forms.Padding(10, 0, 0, 0)
-$faixaTexto.Font = New-Object Drawing.Font('Segoe UI', 10, [Drawing.FontStyle]::Bold)
+$faixaTexto.AutoSize = $false; $faixaTexto.Dock = 'Fill'; $faixaTexto.TextAlign = 'MiddleLeft'; $faixaTexto.Padding = New-Object Windows.Forms.Padding(12, 0, 0, 0)
+$faixaTexto.Font = $fonteNegrito
 $bAtualizarApp = New-Object Windows.Forms.Button
-$bAtualizarApp.Text = 'Atualizar agora'; $bAtualizarApp.Dock = 'Right'; $bAtualizarApp.Width = 150
-$bAtualizarApp.Font = New-Object Drawing.Font('Segoe UI', 9.5, [Drawing.FontStyle]::Bold)
+$bAtualizarApp.Text = 'Atualizar agora'; $bAtualizarApp.Dock = 'Right'; $bAtualizarApp.Width = 160
+$bAtualizarApp.Font = $fonteNegrito; $bAtualizarApp.FlatStyle = 'Flat'; $bAtualizarApp.BackColor = [Drawing.Color]::White
 $faixa.Controls.Add($faixaTexto); $faixa.Controls.Add($bAtualizarApp)
 $faixaTexto.BringToFront()
 
-$lista = New-Object Windows.Forms.ListView
-$lista.View = 'Details'; $lista.FullRowSelect = $true; $lista.MultiSelect = $false; $lista.HideSelection = $false
-$lista.Dock = 'Fill'
-foreach ($c in @(@('Remote', 190), @('Estado', 100), @('Conta', 280), @('Sessões abertas', 110), @('Pasta', 150), @('O que fazer', 330))) {
-    [void]$lista.Columns.Add($c[0], $c[1])
-}
+# ---------------------------------------------------------------- resumo geral
+$topo = New-Object Windows.Forms.Label
+$topo.Dock = 'Top'; $topo.Height = 34; $topo.Font = New-Object Drawing.Font('Segoe UI', 10.5, [Drawing.FontStyle]::Bold)
+$topo.TextAlign = 'MiddleLeft'; $topo.Padding = New-Object Windows.Forms.Padding(12, 0, 0, 0)
+$topo.BackColor = [Drawing.Color]::FromArgb(246, 247, 249)
 
-$detalhe = New-Object Windows.Forms.TextBox
-$detalhe.Multiline = $true; $detalhe.ReadOnly = $true; $detalhe.ScrollBars = 'Vertical'
-$detalhe.Dock = 'Bottom'; $detalhe.Height = 170; $detalhe.Font = New-Object Drawing.Font('Consolas', 9)
+# ---------------------------------------------------------------- barra de ações do remote selecionado
+$barra = New-Object Windows.Forms.ToolStrip
+$barra.GripStyle = 'Hidden'; $barra.Font = $fonte; $barra.Padding = New-Object Windows.Forms.Padding(8, 4, 8, 4)
+$barra.BackColor = [Drawing.Color]::White; $barra.RenderMode = 'System'
+$rotuloBarra = New-Object Windows.Forms.ToolStripLabel('Remote selecionado:')
+$rotuloBarra.ForeColor = [Drawing.Color]::DimGray
+[void]$barra.Items.Add($rotuloBarra)
 
-$painel = New-Object Windows.Forms.FlowLayoutPanel
-$painel.Dock = 'Right'; $painel.Width = 200; $painel.FlowDirection = 'TopDown'; $painel.Padding = New-Object Windows.Forms.Padding(6)
-
-$dicas = New-Object Windows.Forms.ToolTip
 $botoes = @{}
 function Add-Botao($chave, $texto, $dica) {
-    $b = New-Object Windows.Forms.Button
-    $b.Text = $texto; $b.Width = 182; $b.Height = 34
-    $dicas.SetToolTip($b, $dica)
-    $painel.Controls.Add($b)
+    $b = New-Object Windows.Forms.ToolStripButton($texto)
+    $b.DisplayStyle = 'Text'; $b.ToolTipText = $dica
+    $b.Padding = New-Object Windows.Forms.Padding(6, 2, 6, 2)
+    [void]$barra.Items.Add($b)
     $botoes[$chave] = $b
     return $b
 }
-
-$titulo = New-Object Windows.Forms.Label
-$titulo.Text = 'Selecione uma linha e escolha:'; $titulo.AutoSize = $true; $titulo.Margin = New-Object Windows.Forms.Padding(0, 4, 0, 6)
-$painel.Controls.Add($titulo)
 $bCriar     = Add-Botao 'criar'     'Criar' 'Cria o remote que ainda não existe, ou passa a gerenciar uma tarefa feita fora do programa (sem derrubar).'
-$bCriar.Font = New-Object Drawing.Font('Segoe UI', 9.5, [Drawing.FontStyle]::Bold)
-$bRemover   = Add-Botao 'remover'   'Remover...' 'Para o Remote Control e apaga a tarefa do Windows (pede confirmação; o login da conta fica guardado).'
-$bRemover.ForeColor = [Drawing.Color]::Firebrick
+$bCriar.Font = $fonteNegrito
 $bLogin     = Add-Botao 'login'     'Entrar na conta' 'Abre o login da conta do remote selecionado.'
 $bConsertar = Add-Botao 'consertar' 'Conferir e consertar' 'Confere o remote selecionado e conserta o que estiver errado. Não derruba o que está rodando.'
 $bTestar    = Add-Botao 'testar'    'Testar conexão' 'Se está rodando, confere a conexão; se não, sobe e espera conectar.'
 $bReiniciar = Add-Botao 'reiniciar' 'Reiniciar' 'Derruba e sobe de novo (as sessões desse remote caem).'
 $bEditar    = Add-Botao 'editar'    'Editar...' 'Muda nome, conta, pasta ou modo.'
-$bLogs      = Add-Botao 'logs'      'Abrir pasta de logs' 'Abre a pasta com os logs do remote selecionado.'
-$sep = New-Object Windows.Forms.Label; $sep.Text = 'Geral:'; $sep.AutoSize = $true; $sep.Margin = New-Object Windows.Forms.Padding(0, 14, 0, 6)
-$painel.Controls.Add($sep)
-$bNovo      = Add-Botao 'novo'      'Novo remote...' 'Cria um Remote Control novo (nome, conta e pasta).'
-$bTudo      = Add-Botao 'tudo'      'Criar e conferir todos' 'Cria os que ainda não existem e confere/conserta todos.'
-$bAtualizar = Add-Botao 'atualizar' 'Recarregar lista' 'Lê de novo o estado de tudo.'
-$bVerificar = Add-Botao 'verificar' 'Verificar atualização' 'Confere agora no site se há versão nova do programa.'
+$bLogs      = Add-Botao 'logs'      'Logs' 'Abre a pasta com os logs do remote selecionado.'
+$bRemover   = Add-Botao 'remover'   'Remover...' 'Para o Remote Control e apaga a tarefa do Windows (pede confirmação; o login da conta fica guardado).'
+$bRemover.ForeColor = [Drawing.Color]::Firebrick; $bRemover.Alignment = 'Right'
 
+# ---------------------------------------------------------------- lista
+$lista = New-Object Windows.Forms.ListView
+$lista.View = 'Details'; $lista.FullRowSelect = $true; $lista.MultiSelect = $false; $lista.HideSelection = $false
+$lista.Dock = 'Fill'; $lista.BorderStyle = 'None'; $lista.GridLines = $false; $lista.Font = $fonte
+$altura = New-Object Windows.Forms.ImageList; $altura.ImageSize = New-Object Drawing.Size(1, 28); $lista.SmallImageList = $altura
+foreach ($c in @(@('Remote', 210), @('Estado', 100), @('Conta', 300), @('Sessões', 75), @('Pasta', 150), @('O que fazer', 300))) {
+    [void]$lista.Columns.Add($c[0], $c[1])
+}
+$ajustarColunas = {
+    $soma = 0
+    for ($i = 0; $i -lt $lista.Columns.Count - 1; $i++) { $soma += $lista.Columns[$i].Width }
+    $resto = $lista.ClientSize.Width - $soma - 4
+    if ($resto -gt 150) { $lista.Columns[$lista.Columns.Count - 1].Width = $resto }
+}
+$lista.Add_Resize($ajustarColunas)
+
+# Botão direito na lista: as mesmas ações da barra.
+$menuLinha = New-Object Windows.Forms.ContextMenuStrip
+$menuLinha.Font = $fonte
+foreach ($k in 'criar', 'login', 'consertar', 'testar', 'reiniciar', 'editar', 'logs', 'remover') {
+    $orig = $botoes[$k]
+    $i = New-Object Windows.Forms.ToolStripMenuItem($orig.Text)
+    $i.Tag = $k
+    $i.Add_Click({ param($s) $botoes[$s.Tag].PerformClick() })
+    [void]$menuLinha.Items.Add($i)
+}
+$menuLinha.Add_Opening({
+    foreach ($i in $menuLinha.Items) { $b = $botoes[$i.Tag]; $i.Text = $b.Text; $i.Enabled = $b.Enabled; $i.ForeColor = $b.ForeColor }
+})
+$lista.ContextMenuStrip = $menuLinha
+
+# ---------------------------------------------------------------- registro (log) embaixo
+$painelLog = New-Object Windows.Forms.Panel
+$painelLog.Dock = 'Bottom'; $painelLog.Height = 150; $painelLog.BackColor = [Drawing.Color]::FromArgb(246, 247, 249)
+$rotuloLog = New-Object Windows.Forms.Label
+$rotuloLog.Text = 'Registro'; $rotuloLog.Dock = 'Top'; $rotuloLog.Height = 24; $rotuloLog.ForeColor = [Drawing.Color]::DimGray
+$rotuloLog.Padding = New-Object Windows.Forms.Padding(10, 4, 0, 0)
+$detalhe = New-Object Windows.Forms.TextBox
+$detalhe.Multiline = $true; $detalhe.ReadOnly = $true; $detalhe.ScrollBars = 'Vertical'; $detalhe.BorderStyle = 'None'
+$detalhe.Dock = 'Fill'; $detalhe.Font = New-Object Drawing.Font('Consolas', 9.5); $detalhe.BackColor = [Drawing.Color]::FromArgb(246, 247, 249)
+$painelLog.Controls.Add($detalhe); $painelLog.Controls.Add($rotuloLog)
+
+# Ordem do encaixe: o último adicionado fica mais em cima; a lista ocupa o que sobra.
 $form.Controls.Add($lista)
-$form.Controls.Add($painel)
-$form.Controls.Add($detalhe)
+$form.Controls.Add($painelLog)
+$form.Controls.Add($barra)
 $form.Controls.Add($topo)
 $form.Controls.Add($faixa)
-$lista.BringToFront()   # a lista ocupa só o espaço que sobra; o painel de botões fica sempre visível
-$painel.AutoScroll = $true
+$form.Controls.Add($menu)
 
 $script:OnLog = {
     param($m)
@@ -127,6 +186,7 @@ function Update-Botoes {
 
 function Set-Ocupado([bool]$o) {
     foreach ($b in $botoes.Values) { $b.Enabled = -not $o }
+    $menu.Enabled = -not $o
     $form.UseWaitCursor = $o
     if (-not $o) { Update-Botoes }
     [Windows.Forms.Application]::DoEvents()
@@ -431,7 +491,21 @@ $relogio = New-Object Windows.Forms.Timer
 $relogio.Interval = 10 * 60 * 1000
 $relogio.Add_Tick({ if (-not $form.UseWaitCursor) { Test-Atualizacao } })
 
+$mSair.Add_Click({ $form.Close() })
+$mPastaApp.Add_Click({ Start-Process explorer.exe (Split-Path $PSScriptRoot -Parent) })
+$mPastaDados.Add_Click({ New-Item -ItemType Directory -Force $script:Base | Out-Null; Start-Process explorer.exe $script:Base })
+$mLoginSite.Add_Click({
+    Remove-Item $script:AtuLogin -Force -ErrorAction SilentlyContinue
+    Test-Atualizacao -PodePedirLogin
+    if (Test-Path $script:AtuLogin) { Say 'Login do site salvo.' } else { Say 'Login do site não foi salvo (cancelado ou login/senha errados).' }
+})
+$mSite.Add_Click({ $u = Get-SiteUrl; if ($u) { Start-Process $u } })
+$mSobre.Add_Click({
+    [void][Windows.Forms.MessageBox]::Show($form, "Claude Remote Manager $(Get-VersaoLocal)`r`n`r`nGerencia os Remote Control do Claude Code deste PC, com várias contas.`r`nAtualizações: $(Get-SiteUrl)", 'Sobre', 'OK', 'Information')
+})
+
 function Start-Janela {
+    & $ajustarColunas
     Invoke-Acao { }
     if ($script:ExeErro) { Say "Não consegui gerar o Claude Remote Manager.exe (o programa segue pelo PowerShell): $($script:ExeErro)" }
     if (-not $Captura) { Test-Atualizacao -PodePedirLogin; $relogio.Start() }
