@@ -22,6 +22,8 @@ Memória compartilhada entre as contas do Claude que trabalham neste repositóri
 
 - 28/11/2026, sessão na nuvem: 1.2.2, "Abrir em janela anônima" travava a janelinha de login (o `runas /trustlevel` com `-Wait` ficava esperando o navegador). Agora abre o Edge/Chrome direto, sem esperar. Não testado no Windows.
 
+- 28/11/2026, sessão na nuvem: 1.3.0, o programa vira `Claude Remote Manager.exe` (ícone próprio, pede administrador pelo manifesto). O .exe é um lançador em C# (`app/Lancador.cs`) que roda `app/Janela.ps1` dentro do próprio processo (runspace STA, console escondido para os comandos filhos). É compilado no PC por `app/Executavel.ps1` com o csc.exe do .NET Framework e refeito quando o código dele muda; fica fora do git. Quem abre pelo PowerShell (o .bat ou uma atualização) passa sozinho para o .exe. O login do site agora é uma janelinha própria (sem Get-Credential). Não testado no Windows.
+
 ## Pendente
 
 - Publicar versão nova: `ferramentas/Publicar-Versao.ps1` (ou pedir ao Claude), commit e push no app e no site.

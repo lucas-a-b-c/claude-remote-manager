@@ -1,6 +1,6 @@
 @echo off
 rem Claude Remote Manager: abre a janela que cria, confere, conserta, loga e testa os Remote Control deste PC.
-rem   sem argumentos       -> abre a janela
+rem   sem argumentos       -> abre a janela (gera e usa o "Claude Remote Manager.exe" na mesma pasta)
 rem   /consertar           -> sem janela: cria os sugeridos que faltam e confere/conserta todos (abre login se precisar)
 rem   /consertar-sem-login -> igual, mas nunca abre login (para rodar por uma sessao remota)
 setlocal

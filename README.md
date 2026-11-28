@@ -7,7 +7,7 @@ Ele mostra os remotes configurados na máquina, se cada um está rodando e conec
 ## Como usar
 
 1. Clone este repositório no PC (por exemplo em `C:\Projetos\claude-remote-manager`).
-2. Dê dois cliques em **`Gerenciar Remote Control.bat`** e aceite o pedido de administrador.
+2. Dê dois cliques em **`Gerenciar Remote Control.bat`** e aceite o pedido de administrador. Na primeira vez ele gera o **`Claude Remote Manager.exe`** na mesma pasta (compilado no próprio PC com o .NET que vem no Windows) e passa a abrir por ele: daí em diante use o `.exe` (dá para fixar na barra de tarefas). No Gerenciador de Tarefas ele aparece como Claude Remote Manager.
 3. Na janela:
    - A coluna **Estado** diz em uma palavra como está cada um: **Ativo**, **Parado**, **Sem login**, **Erro** ou **Não criado**. A coluna **O que fazer** diz qual botão usar.
    - **Não criado** (azul) são remotes sugeridos (de `app/modelos.json`) que ainda não existem neste PC: selecione e clique **Criar**, ou **Remover...** se não quiser neste PC.

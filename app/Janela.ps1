@@ -22,12 +22,17 @@ Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 # Atualização: o aviso e o botão ficam na faixa amarela no topo (veja Test-Atualizacao, mais abaixo).
 . (Join-Path $PSScriptRoot 'Atualizacao.ps1')
 
+# Aberto pelo PowerShell (o .bat ou uma atualização)? Gera o "Claude Remote Manager.exe" se preciso e passa para ele.
+. (Join-Path $PSScriptRoot 'Executavel.ps1')
+if (-not $Captura -and (Switch-ParaExecutavel)) { exit }
+
 $fonte = New-Object Drawing.Font('Segoe UI', 9.5)
 $form = New-Object Windows.Forms.Form
 $form.Text = "Claude Remote Manager v$(Get-VersaoLocal) - $env:COMPUTERNAME"
 $form.Size = New-Object Drawing.Size(1180, 680)
 $form.MinimumSize = New-Object Drawing.Size(900, 500)
 $form.StartPosition = 'CenterScreen'
+if ($env:CRM_EXE) { try { $form.Icon = [Drawing.Icon]::ExtractAssociatedIcon($env:CRM_EXE) } catch { } }
 $form.Font = $fonte
 
 $topo = New-Object Windows.Forms.Label
@@ -428,6 +433,7 @@ $relogio.Add_Tick({ if (-not $form.UseWaitCursor) { Test-Atualizacao } })
 
 function Start-Janela {
     Invoke-Acao { }
+    if ($script:ExeErro) { Say "Não consegui gerar o Claude Remote Manager.exe (o programa segue pelo PowerShell): $($script:ExeErro)" }
     if (-not $Captura) { Test-Atualizacao -PodePedirLogin; $relogio.Start() }
     if (Get-ModelosPendentes) { Say 'Há remotes "Não criado" (azul): selecione e clique Criar, ou Remover se não quiser neste PC.' }
 }
