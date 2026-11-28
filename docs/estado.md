@@ -32,6 +32,8 @@ Memória compartilhada entre as contas do Claude que trabalham neste repositóri
 
 - 28/11/2026, sessão na nuvem: 1.4.0, visual novo. Menu superior (Arquivo, Remotes, Configurações, Ajuda) com as ações gerais e configurações (recarregar F5, novo remote Ctrl+N, criar e conferir todos, pastas, trocar login do site, verificar atualização, sobre). Ações do remote selecionado numa barra acima da lista e no botão direito; sem painel lateral com rolagem. Linhas mais altas, última coluna ocupa o espaço, registro embaixo com título. Não testado no Windows.
 
+- 28/11/2026, sessão na nuvem: 1.5.0, visual caprichado: cabeçalho escuro com título, PC/versões e o resumo geral numa etiqueta verde/vermelha; lista desenhada pelo programa (OwnerDraw) com cabeçalho discreto, linhas altas, seleção azul-clara e o Estado como etiqueta colorida com bolinha; barra de ações e registro em cinza-claro. Não testado no Windows.
+
 ## Pendente
 
 - Publicar versão nova: `ferramentas/Publicar-Versao.ps1` (ou pedir ao Claude), commit e push no app e no site.

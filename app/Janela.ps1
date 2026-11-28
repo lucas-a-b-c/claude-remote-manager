@@ -39,7 +39,7 @@ $form.Font = $fonte
 
 # ---------------------------------------------------------------- menu superior (ações gerais e configurações)
 $menu = New-Object Windows.Forms.MenuStrip
-$menu.Font = $fonte; $menu.Padding = New-Object Windows.Forms.Padding(6, 3, 0, 3)
+$menu.Font = $fonte; $menu.BackColor = [Drawing.Color]::White; $menu.Padding = New-Object Windows.Forms.Padding(6, 3, 0, 3)
 function Add-Menu($pai, $texto, $atalho) {
     $i = New-Object Windows.Forms.ToolStripMenuItem($texto)
     if ($atalho) { $i.ShortcutKeys = $atalho }
@@ -77,18 +77,35 @@ $bAtualizarApp.Font = $fonteNegrito; $bAtualizarApp.FlatStyle = 'Flat'; $bAtuali
 $faixa.Controls.Add($faixaTexto); $faixa.Controls.Add($bAtualizarApp)
 $faixaTexto.BringToFront()
 
-# ---------------------------------------------------------------- resumo geral
+# ---------------------------------------------------------------- cabeçalho (título, PC e resumo geral)
+function New-Cor([string]$hex) { return [Drawing.ColorTranslator]::FromHtml($hex) }
+$cabecalho = New-Object Windows.Forms.Panel
+$cabecalho.Dock = 'Top'; $cabecalho.Height = 76; $cabecalho.BackColor = New-Cor '#111827'
+$titulo = New-Object Windows.Forms.Label
+$titulo.Text = 'Claude Remote Manager'; $titulo.AutoSize = $true; $titulo.ForeColor = [Drawing.Color]::White
+$titulo.Font = New-Object Drawing.Font('Segoe UI Semibold', 17); $titulo.Location = New-Object Drawing.Point(18, 9)
+$subtitulo = New-Object Windows.Forms.Label
+$subtitulo.AutoSize = $true; $subtitulo.ForeColor = New-Cor '#9CA3AF'; $subtitulo.Font = New-Object Drawing.Font('Segoe UI', 9.5)
+$subtitulo.Location = New-Object Drawing.Point(21, 47); $subtitulo.Text = "PC $env:COMPUTERNAME"
 $topo = New-Object Windows.Forms.Label
-$topo.Dock = 'Top'; $topo.Height = 34; $topo.Font = New-Object Drawing.Font('Segoe UI', 10.5, [Drawing.FontStyle]::Bold)
-$topo.TextAlign = 'MiddleLeft'; $topo.Padding = New-Object Windows.Forms.Padding(12, 0, 0, 0)
-$topo.BackColor = [Drawing.Color]::FromArgb(246, 247, 249)
+$topo.AutoSize = $true; $topo.Font = New-Object Drawing.Font('Segoe UI Semibold', 10.5); $topo.ForeColor = [Drawing.Color]::White
+$topo.Padding = New-Object Windows.Forms.Padding(14, 7, 14, 7); $topo.BackColor = New-Cor '#374151'; $topo.Text = 'Lendo o estado...'
+$cabecalho.Controls.AddRange(@($titulo, $subtitulo, $topo))
+$posicionarResumo = {
+    $topo.MaximumSize = New-Object Drawing.Size([Math]::Max(200, $cabecalho.Width - 400), 0)
+    $topo.Left = $cabecalho.Width - $topo.Width - 20
+    $topo.Top = [int](($cabecalho.Height - $topo.Height) / 2)
+}
+$cabecalho.Add_Resize($posicionarResumo)
+$topo.Add_TextChanged($posicionarResumo)
+$topo.Add_SizeChanged($posicionarResumo)
 
 # ---------------------------------------------------------------- barra de ações do remote selecionado
 $barra = New-Object Windows.Forms.ToolStrip
 $barra.GripStyle = 'Hidden'; $barra.Font = $fonte; $barra.Padding = New-Object Windows.Forms.Padding(8, 4, 8, 4)
-$barra.BackColor = [Drawing.Color]::White; $barra.RenderMode = 'System'
+$barra.BackColor = New-Cor '#F9FAFB'; $barra.RenderMode = 'System'; $barra.AutoSize = $false; $barra.Height = 42
 $rotuloBarra = New-Object Windows.Forms.ToolStripLabel('Remote selecionado:')
-$rotuloBarra.ForeColor = [Drawing.Color]::DimGray
+$rotuloBarra.ForeColor = New-Cor '#6B7280'
 [void]$barra.Items.Add($rotuloBarra)
 
 $botoes = @{}
@@ -109,13 +126,13 @@ $bReiniciar = Add-Botao 'reiniciar' 'Reiniciar' 'Derruba e sobe de novo (as sess
 $bEditar    = Add-Botao 'editar'    'Editar...' 'Muda nome, conta, pasta ou modo.'
 $bLogs      = Add-Botao 'logs'      'Logs' 'Abre a pasta com os logs do remote selecionado.'
 $bRemover   = Add-Botao 'remover'   'Remover...' 'Para o Remote Control e apaga a tarefa do Windows (pede confirmação; o login da conta fica guardado).'
-$bRemover.ForeColor = [Drawing.Color]::Firebrick; $bRemover.Alignment = 'Right'
+$bRemover.ForeColor = New-Cor '#B91C1C'; $bRemover.Alignment = 'Right'
 
 # ---------------------------------------------------------------- lista
 $lista = New-Object Windows.Forms.ListView
 $lista.View = 'Details'; $lista.FullRowSelect = $true; $lista.MultiSelect = $false; $lista.HideSelection = $false
 $lista.Dock = 'Fill'; $lista.BorderStyle = 'None'; $lista.GridLines = $false; $lista.Font = $fonte
-$altura = New-Object Windows.Forms.ImageList; $altura.ImageSize = New-Object Drawing.Size(1, 28); $lista.SmallImageList = $altura
+$altura = New-Object Windows.Forms.ImageList; $altura.ImageSize = New-Object Drawing.Size(1, 36); $lista.SmallImageList = $altura
 foreach ($c in @(@('Remote', 210), @('Estado', 100), @('Conta', 300), @('Sessões', 75), @('Pasta', 150), @('O que fazer', 300))) {
     [void]$lista.Columns.Add($c[0], $c[1])
 }
@@ -126,6 +143,59 @@ $ajustarColunas = {
     if ($resto -gt 150) { $lista.Columns[$lista.Columns.Count - 1].Width = $resto }
 }
 $lista.Add_Resize($ajustarColunas)
+
+# Desenho próprio da lista: cabeçalho discreto, linha selecionada azul-clara e o estado como etiqueta colorida.
+$lista.OwnerDraw = $true
+$script:CoresEstado = @{
+    'Ativo'      = @((New-Cor '#DCFCE7'), (New-Cor '#166534'), (New-Cor '#22C55E'))
+    'Parado'     = @((New-Cor '#FEF3C7'), (New-Cor '#92400E'), (New-Cor '#F59E0B'))
+    'Sem login'  = @((New-Cor '#FEE2E2'), (New-Cor '#991B1B'), (New-Cor '#EF4444'))
+    'Erro'       = @((New-Cor '#FEE2E2'), (New-Cor '#991B1B'), (New-Cor '#EF4444'))
+    'Não criado' = @((New-Cor '#DBEAFE'), (New-Cor '#1E40AF'), (New-Cor '#3B82F6'))
+}
+$script:CorTexto = New-Cor '#111827'; $script:CorFraca = New-Cor '#6B7280'; $script:CorSel = New-Cor '#E0ECFF'; $script:CorLinha = New-Cor '#F1F5F9'
+$script:FonteCab = New-Object Drawing.Font('Segoe UI Semibold', 9)
+$script:FontePill = New-Object Drawing.Font('Segoe UI Semibold', 9)
+function New-Arredondado([Drawing.Rectangle]$r, [int]$raio) {
+    $p = New-Object Drawing.Drawing2D.GraphicsPath
+    $d = $raio * 2
+    $p.AddArc($r.X, $r.Y, $d, $d, 180, 90); $p.AddArc($r.Right - $d, $r.Y, $d, $d, 270, 90)
+    $p.AddArc($r.Right - $d, $r.Bottom - $d, $d, $d, 0, 90); $p.AddArc($r.X, $r.Bottom - $d, $d, $d, 90, 90)
+    $p.CloseFigure(); return $p
+}
+$lista.Add_DrawColumnHeader({
+    param($s, $e)
+    $e.Graphics.FillRectangle((New-Object Drawing.SolidBrush((New-Cor '#F9FAFB'))), $e.Bounds)
+    $e.Graphics.DrawLine((New-Object Drawing.Pen((New-Cor '#E5E7EB'))), $e.Bounds.Left, $e.Bounds.Bottom - 1, $e.Bounds.Right, $e.Bounds.Bottom - 1)
+    $r = New-Object Drawing.Rectangle(($e.Bounds.X + 10), $e.Bounds.Y, ($e.Bounds.Width - 12), $e.Bounds.Height)
+    [Windows.Forms.TextRenderer]::DrawText($e.Graphics, $e.Header.Text.ToUpper(), $script:FonteCab, $r, $script:CorFraca, ([Windows.Forms.TextFormatFlags]'VerticalCenter, Left, EndEllipsis'))
+})
+$lista.Add_DrawItem({ param($s, $e) })
+$lista.Add_DrawSubItem({
+    param($s, $e)
+    $g = $e.Graphics
+    $g.SmoothingMode = 'AntiAlias'
+    $fundo = if ($e.Item.Selected) { $script:CorSel } else { [Drawing.Color]::White }
+    $g.FillRectangle((New-Object Drawing.SolidBrush($fundo)), $e.Bounds)
+    $g.DrawLine((New-Object Drawing.Pen($script:CorLinha)), $e.Bounds.Left, $e.Bounds.Bottom - 1, $e.Bounds.Right, $e.Bounds.Bottom - 1)
+    $txt = $e.SubItem.Text
+    if ($e.ColumnIndex -eq 1 -and $script:CoresEstado.ContainsKey($txt)) {
+        $c = $script:CoresEstado[$txt]
+        $tam = [Windows.Forms.TextRenderer]::MeasureText($txt, $script:FontePill)
+        $w = $tam.Width + 22; $h = 22
+        $r = New-Object Drawing.Rectangle(($e.Bounds.X + 8), ($e.Bounds.Y + [int](($e.Bounds.Height - $h) / 2)), $w, $h)
+        $g.FillPath((New-Object Drawing.SolidBrush($c[0])), (New-Arredondado $r 10))
+        $g.FillEllipse((New-Object Drawing.SolidBrush($c[2])), ($r.X + 8), ($r.Y + 8), 6, 6)
+        $rt = New-Object Drawing.Rectangle(($r.X + 16), $r.Y, ($w - 16), $h)
+        [Windows.Forms.TextRenderer]::DrawText($g, $txt, $script:FontePill, $rt, $c[1], ([Windows.Forms.TextFormatFlags]'VerticalCenter, Left'))
+        return
+    }
+    $cor = if ($e.ColumnIndex -eq 0) { $script:CorTexto } elseif ($e.ColumnIndex -eq 5) { $script:CorFraca } else { New-Cor '#374151' }
+    $fonteC = if ($e.ColumnIndex -eq 0) { $script:FontePill } else { $lista.Font }
+    $r = New-Object Drawing.Rectangle(($e.Bounds.X + 10), $e.Bounds.Y, ($e.Bounds.Width - 14), $e.Bounds.Height)
+    [Windows.Forms.TextRenderer]::DrawText($g, $txt, $fonteC, $r, $cor, ([Windows.Forms.TextFormatFlags]'VerticalCenter, Left, EndEllipsis, NoPrefix'))
+})
+$lista.Add_SelectedIndexChanged({ $lista.Invalidate() })
 
 # Botão direito na lista: as mesmas ações da barra.
 $menuLinha = New-Object Windows.Forms.ContextMenuStrip
@@ -144,21 +214,21 @@ $lista.ContextMenuStrip = $menuLinha
 
 # ---------------------------------------------------------------- registro (log) embaixo
 $painelLog = New-Object Windows.Forms.Panel
-$painelLog.Dock = 'Bottom'; $painelLog.Height = 150; $painelLog.BackColor = [Drawing.Color]::FromArgb(246, 247, 249)
+$painelLog.Dock = 'Bottom'; $painelLog.Height = 140; $painelLog.BackColor = New-Cor '#F9FAFB'; $painelLog.Padding = New-Object Windows.Forms.Padding(10, 0, 4, 6)
 $rotuloLog = New-Object Windows.Forms.Label
-$rotuloLog.Text = 'Registro'; $rotuloLog.Dock = 'Top'; $rotuloLog.Height = 24; $rotuloLog.ForeColor = [Drawing.Color]::DimGray
-$rotuloLog.Padding = New-Object Windows.Forms.Padding(10, 4, 0, 0)
+$rotuloLog.Text = 'REGISTRO'; $rotuloLog.Dock = 'Top'; $rotuloLog.Height = 26; $rotuloLog.ForeColor = New-Cor '#6B7280'; $rotuloLog.Font = New-Object Drawing.Font('Segoe UI Semibold', 9)
+$rotuloLog.Padding = New-Object Windows.Forms.Padding(0, 6, 0, 0)
 $detalhe = New-Object Windows.Forms.TextBox
 $detalhe.Multiline = $true; $detalhe.ReadOnly = $true; $detalhe.ScrollBars = 'Vertical'; $detalhe.BorderStyle = 'None'
-$detalhe.Dock = 'Fill'; $detalhe.Font = New-Object Drawing.Font('Consolas', 9.5); $detalhe.BackColor = [Drawing.Color]::FromArgb(246, 247, 249)
+$detalhe.Dock = 'Fill'; $detalhe.Font = New-Object Drawing.Font('Consolas', 9.5); $detalhe.BackColor = New-Cor '#F9FAFB'; $detalhe.ForeColor = New-Cor '#374151'
 $painelLog.Controls.Add($detalhe); $painelLog.Controls.Add($rotuloLog)
 
 # Ordem do encaixe: o último adicionado fica mais em cima; a lista ocupa o que sobra.
 $form.Controls.Add($lista)
 $form.Controls.Add($painelLog)
 $form.Controls.Add($barra)
-$form.Controls.Add($topo)
 $form.Controls.Add($faixa)
+$form.Controls.Add($cabecalho)
 $form.Controls.Add($menu)
 
 $script:OnLog = {
@@ -275,15 +345,16 @@ function Update-Lista {
     $adm = if (Test-Admin) { '' } else { '   ATENÇÃO: aberto sem administrador, consertar vai falhar.' }
     if ($pendentes.Count) {
         $resumo = if ($pendentes.Count -eq 1) { "1 precisa de atenção: $($pendentes[0])" } else { "$($pendentes.Count) precisam de atenção: $($pendentes -join ', ')" }
-        $topo.ForeColor = [Drawing.Color]::Firebrick
+        $topo.BackColor = New-Cor '#B91C1C'
     } elseif ($lista.Items.Count) {
         $resumo = 'Tudo certo: todos os remotes estão ativos.'
-        $topo.ForeColor = [Drawing.Color]::DarkGreen
+        $topo.BackColor = New-Cor '#15803D'
     } else {
-        $resumo = 'Nenhum remote neste PC. Clique em Novo remote.'
-        $topo.ForeColor = [Drawing.SystemColors]::ControlText
+        $resumo = 'Nenhum remote neste PC. Use Remotes > Novo remote.'
+        $topo.BackColor = New-Cor '#374151'
     }
-    $topo.Text = "$resumo   |   PC $env:COMPUTERNAME   |   $(Get-ClaudeVersao)   |   atualizado às $(Get-Date -Format HH:mm:ss)$adm"
+    $topo.Text = $resumo
+    $subtitulo.Text = "PC $env:COMPUTERNAME   ·   $(Get-ClaudeVersao)   ·   programa v$(Get-VersaoLocal)   ·   atualizado às $(Get-Date -Format HH:mm:ss)$adm"
     $script:Lendo = $false
     Say "Resumo: $resumo"
     Update-Botoes
