@@ -18,6 +18,8 @@ Memória compartilhada entre as contas do Claude que trabalham neste repositóri
 
 - 27/11/2026, sessão na nuvem: 1.2.0, login pelo próprio programa (sem terminal). O `claude auth login` roda escondido com a entrada redirecionada (testado no Linux: com stdin em pipe ele imprime o link e lê o código de uma linha). A janela do programa abre o link numa janela anônima (Edge InPrivate ou Chrome, como usuário comum via `runas /trustlevel`), tem caixa para colar o código (enviado sem espaços) e mostra o erro em português. No PC Lucas o código colado no terminal dava "invalid code". Não testado no Windows.
 
+- 28/11/2026, sessão na nuvem: 1.2.1, resumo geral no topo e no log ("Tudo certo" só quando todos estão ativos; senão lista quem precisa de atenção) e detalhes rotulados com o nome do remote. No PC Lucas o log mostrava "Tudo certo" da Gufe com a Cruz Verbena sem login. Não testado no Windows.
+
 ## Pendente
 
 - Publicar versão nova: `ferramentas/Publicar-Versao.ps1` (ou pedir ao Claude), commit e push no app e no site.

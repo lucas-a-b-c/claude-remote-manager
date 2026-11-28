@@ -31,7 +31,7 @@ $form.StartPosition = 'CenterScreen'
 $form.Font = $fonte
 
 $topo = New-Object Windows.Forms.Label
-$topo.Dock = 'Top'; $topo.Height = 28; $topo.Padding = New-Object Windows.Forms.Padding(8, 6, 0, 0)
+$topo.Dock = 'Top'; $topo.Height = 28; $topo.Font = New-Object Drawing.Font('Segoe UI', 9.5, [Drawing.FontStyle]::Bold); $topo.Padding = New-Object Windows.Forms.Padding(8, 6, 0, 0)
 
 $faixa = New-Object Windows.Forms.Panel
 $faixa.Dock = 'Top'; $faixa.Height = 40; $faixa.BackColor = [Drawing.Color]::FromArgb(255, 236, 160); $faixa.Visible = $false
@@ -140,8 +140,8 @@ function Show-Detalhe {
     if (-not $s -or $s.tipo -ne 'remote') { return }
     $e = $script:Estados[$s.r.id]
     if (-not $e) { return }
-    $l = @("== $($s.r.nome)   conta: $(Get-ContaDir $s.r.conta)")
-    if ($e.problemas.Count) { $l += @($e.problemas | ForEach-Object { "  - $_" }) } else { $l += '  Tudo certo.' }
+    $l = @("Detalhes de '$($s.r.nome)' (linha selecionada)   conta: $(Get-ContaDir $s.r.conta)")
+    if ($e.problemas.Count) { $l += @($e.problemas | ForEach-Object { "  - $_" }) } else { $l += "  '$($s.r.nome)' está funcionando." }
     $detalhe.AppendText(($l -join "`r`n") + "`r`n")
 }
 
@@ -172,11 +172,13 @@ function Get-EstadoSimples($e) {
 function Update-Lista {
     $sel = Get-Selecionado
     $selId = if ($sel) { $sel.chave } else { '' }
+    $script:Lendo = $true
     $topo.Text = 'Lendo o estado...'
     [Windows.Forms.Application]::DoEvents()
     $lista.BeginUpdate()
     $lista.Items.Clear()
     $procs = Get-ProcessosRC
+    $pendentes = @()
     foreach ($r in Read-Remotes) {
         $e = Get-Estado $r $procs
         $script:Estados[$r.id] = $e
@@ -185,11 +187,13 @@ function Update-Lista {
         $sessoes = if ($e.processo) { [string]$e.sessoes } else { '-' }
         $nome = if ($e.nomeAntigo) { "$($r.nome) (reinicie para trocar o nome)" } else { $r.nome }
         Add-Linha ([pscustomobject]@{ tipo = 'remote'; chave = "r:$($r.id)"; r = $r }) @($nome, $est.texto, $conta, $sessoes, $r.pasta, $est.dica) $est.cor
+        if ($est.texto -ne 'Ativo' -or $est.cor -ne [Drawing.Color]::DarkGreen) { $pendentes += "$($r.nome) ($($est.texto))" }
     }
     foreach ($m in Get-ModelosPendentes) {
         $pasta = if ($m.pasta) { $m.pasta } else { Get-PastaPadrao }
         $conta = Get-ContaNome (Get-ContaDeModelo $m)
         Add-Linha ([pscustomobject]@{ tipo = 'modelo'; chave = "m:$($m.nome)"; m = $m }) @($m.nome, 'Não criado', $conta, '-', $pasta, 'Clique em Criar (ou Remover, se não quiser neste PC).') ([Drawing.Color]::SteelBlue)
+        $pendentes += "$($m.nome) (Não criado)"
     }
     foreach ($s in Find-TarefasSoltas) {
         $p = Find-ProcessoSolta $s $procs
@@ -198,12 +202,25 @@ function Update-Lista {
         $sessoes = if ($p) { [string](Get-Sessoes $p) } else { '-' }
         $nome = if ($s.nome) { $s.nome } else { $s.tarefa }
         Add-Linha ([pscustomobject]@{ tipo = 'solta'; chave = "s:$($s.tarefa)"; s = $s }) @($nome, $txt, (Get-ContaNome $s.conta), $sessoes, $s.pasta, 'Feito fora do programa: Gerenciar pelo programa, ou Remover.') $cor
+        if (-not $p) { $pendentes += "$nome (Parado)" }
     }
     $lista.EndUpdate()
     foreach ($it in $lista.Items) { if ($it.Tag.chave -eq $selId) { $it.Selected = $true } }
     if ($lista.SelectedItems.Count -eq 0 -and $lista.Items.Count) { $lista.Items[0].Selected = $true }
     $adm = if (Test-Admin) { '' } else { '   ATENÇÃO: aberto sem administrador, consertar vai falhar.' }
-    $topo.Text = "PC $env:COMPUTERNAME   |   $(Get-ClaudeVersao)   |   atualizado às $(Get-Date -Format HH:mm:ss)$adm"
+    if ($pendentes.Count) {
+        $resumo = if ($pendentes.Count -eq 1) { "1 precisa de atenção: $($pendentes[0])" } else { "$($pendentes.Count) precisam de atenção: $($pendentes -join ', ')" }
+        $topo.ForeColor = [Drawing.Color]::Firebrick
+    } elseif ($lista.Items.Count) {
+        $resumo = 'Tudo certo: todos os remotes estão ativos.'
+        $topo.ForeColor = [Drawing.Color]::DarkGreen
+    } else {
+        $resumo = 'Nenhum remote neste PC. Clique em Novo remote.'
+        $topo.ForeColor = [Drawing.SystemColors]::ControlText
+    }
+    $topo.Text = "$resumo   |   PC $env:COMPUTERNAME   |   $(Get-ClaudeVersao)   |   atualizado às $(Get-Date -Format HH:mm:ss)$adm"
+    $script:Lendo = $false
+    Say "Resumo: $resumo"
     Update-Botoes
     Show-Detalhe
 }
@@ -288,7 +305,7 @@ function Show-DialogoRemote($r) {
 
 # ---------------------------------------------------------------- eventos
 
-$lista.Add_SelectedIndexChanged({ Update-Botoes })
+$lista.Add_SelectedIndexChanged({ Update-Botoes; if ($lista.SelectedItems.Count -and -not $script:Lendo) { Show-Detalhe } })
 $lista.Add_DoubleClick({ Show-Detalhe })
 $bAtualizar.Add_Click({ Invoke-Acao { } })
 $bNovo.Add_Click({
