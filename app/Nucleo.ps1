@@ -146,8 +146,16 @@ function Read-Compartilhado([string]$arq) {
     } catch { return '' }
 }
 
+# Processos "claude auth login" ainda vivos. O claude.exe pode passar o trabalho para outro processo
+# (ex.: quando se atualiza sozinho) e terminar; por isso não dá para confiar só no processo que abrimos.
+function Get-ProcessosLogin {
+    return @(Get-CimInstance Win32_Process -Filter "Name='claude.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -match '\sauth\s+login(\s|$)' })
+}
+
 function Stop-Arvore($p) {
     if ($p -and -not $p.HasExited) { & taskkill.exe /PID $p.Id /T /F 2>$null | Out-Null }
+    foreach ($w in Get-ProcessosLogin) { & taskkill.exe /PID $w.ProcessId /T /F 2>$null | Out-Null }
 }
 
 function Start-ProcessoLogin($r, [string]$saida) {
@@ -176,7 +184,7 @@ function Start-Login($r) {
     $nav = Find-NavegadorAnonimo
     Say "  Abrindo o login da conta de '$($r.nome)'."
 
-    $st = @{ p = $null; url = ''; enviado = $false; ok = $false }
+    $st = @{ p = $null; url = ''; enviado = $false; ok = $false; checagem = (Get-Date); conta = (Get-Date) }
     $fonteL = New-Object Drawing.Font('Segoe UI', 10)
     $d = New-Object Windows.Forms.Form
     $d.Text = "Entrar na conta - $($r.nome)"
@@ -207,7 +215,7 @@ function Start-Login($r) {
 
     $iniciar = {
         Stop-Arvore $st.p
-        $st.url = ''; $st.enviado = $false
+        $st.url = ''; $st.enviado = $false; $st.checagem = Get-Date
         $bAbrir.Enabled = $false; $bCopiar.Enabled = $false; $tCodigo.Enabled = $false; $bEntrar.Enabled = $false; $bNovo.Visible = $false
         $tCodigo.Text = ''
         $lStatus.ForeColor = [Drawing.SystemColors]::ControlText
@@ -225,16 +233,29 @@ function Start-Login($r) {
             $bAbrir.Enabled = $true; $bCopiar.Enabled = $true; $tCodigo.Enabled = $true; $bEntrar.Enabled = $true
             $lStatus.Text = 'Pronto. Clique no botão do passo 1.'
         }
-        if ($st.p -and $st.p.HasExited) {
+        if ($txt -match 'Login successful') { $relogioL.Stop(); $st.ok = $true; $d.DialogResult = 'OK'; $d.Close(); return }
+        $falhou = $txt -match "Couldn't log in"
+        $agora = Get-Date
+        if (-not $falhou -and $st.p -and $st.p.HasExited -and (($agora - $st.checagem).TotalSeconds -ge 3)) {
+            # O processo que abrimos terminou: só é falha se nenhum "claude auth login" continua rodando.
+            $st.checagem = $agora
+            if (-not (Get-ProcessosLogin)) { $falhou = $true }
+        }
+        if (-not $falhou -and $st.enviado -and (($agora - $st.conta).TotalSeconds -ge 5)) {
+            $st.conta = $agora
+            if ((Get-Login $r.conta).logado) { $relogioL.Stop(); $st.ok = $true; $d.DialogResult = 'OK'; $d.Close(); return }
+        }
+        if ($falhou) {
             $relogioL.Stop()
-            if ($txt -match 'Login successful' -or (Get-Login $r.conta).logado) {
-                $st.ok = $true; $d.DialogResult = 'OK'; $d.Close(); return
-            }
-            $erro = (@($txt -split "`r?`n" | Where-Object { $_ -match "Couldn't log in|error|erro|failed" }) | Select-Object -Last 1)
-            if (-not $erro) { $erro = ($txt -split "`r?`n" | Where-Object { $_.Trim() } | Select-Object -Last 1) }
-            $erro = ($erro -replace '\x1b\[[0-9;]*[A-Za-z]', '').Trim()
+            if ((Get-Login $r.conta).logado) { $st.ok = $true; $d.DialogResult = 'OK'; $d.Close(); return }
+            $linhas = @($txt -split "`r?`n" | ForEach-Object { ($_ -replace '\x1b\[[0-9;]*[A-Za-z]', '' -replace '\x1b\][^\x07\x1b]*(\x07|\x1b\\)', '').Trim() } | Where-Object { $_ })
+            $erro = @($linhas | Where-Object { $_ -match "Couldn't log in|error|failed" }) | Select-Object -Last 1
             if ($erro -match "wasn't accepted|incomplete|expired|already used") {
                 $erro = 'O código não foi aceito. Ele pode ter sido copiado pela metade, já ter sido usado, ou ser de uma tentativa anterior. Clique em Gerar novo link e faça de novo, usando o link novo.'
+            } elseif (-not $erro) {
+                $cod = '?'
+                try { $cod = $st.p.ExitCode } catch { }
+                $erro = "O login do Claude fechou sozinho (código $cod) sem dizer o motivo. A saída ficou em $saida."
             }
             $lStatus.ForeColor = [Drawing.Color]::Firebrick
             $lStatus.Text = "Não deu certo. $erro"
@@ -248,7 +269,7 @@ function Start-Login($r) {
     $bEntrar.Add_Click({
         $c = ($tCodigo.Text -replace '\s', '').Trim('"', "'", '`')
         if (-not $c) { $lStatus.Text = 'Cole o código que o site mostrou.'; return }
-        if (-not $st.p -or $st.p.HasExited) { return }
+        if (-not $st.p) { return }
         try {
             $st.p.StandardInput.WriteLine($c)
             $st.p.StandardInput.Flush()
@@ -264,7 +285,6 @@ function Start-Login($r) {
     [void]$d.ShowDialog()
     $relogioL.Stop()
     Stop-Arvore $st.p
-    Remove-Item $saida -Force -ErrorAction SilentlyContinue
 
     $l = Get-Login $r.conta
     if ($l.logado) { Say "  Logado como $($l.email)."; return $true }
