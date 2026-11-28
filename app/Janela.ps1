@@ -151,6 +151,7 @@ $script:CoresEstado = @{
     'Parado'     = @((New-Cor '#FEF3C7'), (New-Cor '#92400E'), (New-Cor '#F59E0B'))
     'Sem login'  = @((New-Cor '#FEE2E2'), (New-Cor '#991B1B'), (New-Cor '#EF4444'))
     'Erro'       = @((New-Cor '#FEE2E2'), (New-Cor '#991B1B'), (New-Cor '#EF4444'))
+    'Iniciando'  = @((New-Cor '#E0F2FE'), (New-Cor '#075985'), (New-Cor '#0EA5E9'))
     'Não criado' = @((New-Cor '#DBEAFE'), (New-Cor '#1E40AF'), (New-Cor '#3B82F6'))
 }
 $script:CorTexto = New-Cor '#111827'; $script:CorFraca = New-Cor '#6B7280'; $script:CorSel = New-Cor '#E0ECFF'; $script:CorLinha = New-Cor '#F1F5F9'
@@ -214,14 +215,26 @@ $lista.ContextMenuStrip = $menuLinha
 
 # ---------------------------------------------------------------- registro (log) embaixo
 $painelLog = New-Object Windows.Forms.Panel
-$painelLog.Dock = 'Bottom'; $painelLog.Height = 140; $painelLog.BackColor = New-Cor '#F9FAFB'; $painelLog.Padding = New-Object Windows.Forms.Padding(10, 0, 4, 6)
+$painelLog.Dock = 'Bottom'; $painelLog.Height = 170; $painelLog.BackColor = New-Cor '#F9FAFB'; $painelLog.Padding = New-Object Windows.Forms.Padding(10, 0, 4, 6)
+$cabLog = New-Object Windows.Forms.Panel
+$cabLog.Dock = 'Top'; $cabLog.Height = 30
 $rotuloLog = New-Object Windows.Forms.Label
-$rotuloLog.Text = 'REGISTRO'; $rotuloLog.Dock = 'Top'; $rotuloLog.Height = 26; $rotuloLog.ForeColor = New-Cor '#6B7280'; $rotuloLog.Font = New-Object Drawing.Font('Segoe UI Semibold', 9)
-$rotuloLog.Padding = New-Object Windows.Forms.Padding(0, 6, 0, 0)
+$rotuloLog.Text = 'REGISTRO'; $rotuloLog.Dock = 'Fill'; $rotuloLog.ForeColor = New-Cor '#6B7280'; $rotuloLog.Font = New-Object Drawing.Font('Segoe UI Semibold', 9)
+$rotuloLog.Padding = New-Object Windows.Forms.Padding(0, 8, 0, 0)
+function New-BotaoLog($texto) {
+    $b = New-Object Windows.Forms.Button
+    $b.Text = $texto; $b.Dock = 'Right'; $b.Width = 120; $b.FlatStyle = 'Flat'; $b.FlatAppearance.BorderColor = New-Cor '#D1D5DB'
+    $b.BackColor = [Drawing.Color]::White; $b.ForeColor = New-Cor '#374151'; $b.Font = New-Object Drawing.Font('Segoe UI', 9); $b.Cursor = [Windows.Forms.Cursors]::Hand
+    return $b
+}
+$bCopiarLog = New-BotaoLog 'Copiar registro'
+$bLimparLog = New-BotaoLog 'Limpar'; $bLimparLog.Width = 80
+$espacoLog = New-Object Windows.Forms.Panel; $espacoLog.Dock = 'Right'; $espacoLog.Width = 6
+$cabLog.Controls.Add($rotuloLog); $cabLog.Controls.Add($bLimparLog); $cabLog.Controls.Add($espacoLog); $cabLog.Controls.Add($bCopiarLog)
 $detalhe = New-Object Windows.Forms.TextBox
 $detalhe.Multiline = $true; $detalhe.ReadOnly = $true; $detalhe.ScrollBars = 'Vertical'; $detalhe.BorderStyle = 'None'
 $detalhe.Dock = 'Fill'; $detalhe.Font = New-Object Drawing.Font('Consolas', 9.5); $detalhe.BackColor = New-Cor '#F9FAFB'; $detalhe.ForeColor = New-Cor '#374151'
-$painelLog.Controls.Add($detalhe); $painelLog.Controls.Add($rotuloLog)
+$painelLog.Controls.Add($detalhe); $painelLog.Controls.Add($cabLog)
 
 # Ordem do encaixe: o último adicionado fica mais em cima; a lista ocupa o que sobra.
 $form.Controls.Add($lista)
@@ -234,9 +247,89 @@ $form.Controls.Add($menu)
 $script:OnLog = {
     param($m)
     $detalhe.AppendText("[$(Get-Date -Format HH:mm:ss)] $m`r`n")
-    [Windows.Forms.Application]::DoEvents()
 }
-$script:OnEspera = { [Windows.Forms.Application]::DoEvents() }
+$script:OnEspera = $null
+
+$bCopiarLog.Add_Click({
+    if (-not $detalhe.Text) { return }
+    try { [Windows.Forms.Clipboard]::SetText($detalhe.Text); $bCopiarLog.Text = 'Copiado!' } catch { $bCopiarLog.Text = 'Não copiou' }
+    $volta = New-Object Windows.Forms.Timer; $volta.Interval = 1500
+    $volta.Add_Tick({ param($t) $t.Stop(); $t.Dispose(); $bCopiarLog.Text = 'Copiar registro' })
+    $volta.Start()
+})
+$bLimparLog.Add_Click({ $detalhe.Clear() })
+
+# ---------------------------------------------------------------- trabalho em segundo plano
+# Tudo que demora (ler o estado, consertar, testar, reiniciar, consultar o site) roda em outra thread,
+# para a janela nunca travar. As linhas do registro chegam por uma fila que o relógio abaixo esvazia.
+$script:Fila = New-Object 'System.Collections.Concurrent.ConcurrentQueue[string]'
+$script:Trabalhos = New-Object System.Collections.ArrayList
+$script:Ocupado = $false
+$script:PreparoFundo = @'
+Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+. (Join-Path $AppPasta 'Nucleo.ps1')
+. (Join-Path $AppPasta 'Atualizacao.ps1')
+$script:OnLog = { param($m) $global:FilaLog.Enqueue([string]$m) }
+$script:OnEspera = $null
+'@
+
+# Roda $codigo (que usa $ArgFundo) em outra thread; quando termina, chama $aoTerminar($saida, $erro) na janela.
+function Start-Fundo([scriptblock]$codigo, $arg, [scriptblock]$aoTerminar) {
+    if ($Captura) {
+        # Na captura (sem janela visível) roda direto.
+        $ArgFundo = $arg
+        $saida = $null; $erro = $null
+        try { $saida = @(& $codigo) } catch { $erro = $_.Exception.Message }
+        & $aoTerminar $saida $erro
+        return
+    }
+    try {
+        $iss = [Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
+        try { $iss.ExecutionPolicy = [Microsoft.PowerShell.ExecutionPolicy]::Bypass } catch { }
+        $rs = [Management.Automation.Runspaces.RunspaceFactory]::CreateRunspace($iss)
+        $rs.ApartmentState = [Threading.ApartmentState]::STA
+        $rs.ThreadOptions = [Management.Automation.Runspaces.PSThreadOptions]::ReuseThread
+        $rs.Open()
+        $rs.SessionStateProxy.SetVariable('FilaLog', $script:Fila)
+        $rs.SessionStateProxy.SetVariable('AppPasta', $PSScriptRoot)
+        $rs.SessionStateProxy.SetVariable('ArgFundo', $arg)
+        $ps = [Management.Automation.PowerShell]::Create()
+        $ps.Runspace = $rs
+        [void]$ps.AddScript($script:PreparoFundo + "`r`n" + $codigo.ToString())
+        $h = $ps.BeginInvoke()
+        [void]$script:Trabalhos.Add(@{ ps = $ps; rs = $rs; h = $h; fim = $aoTerminar })
+        $bomba.Start()
+    } catch {
+        & $aoTerminar $null "não consegui iniciar o trabalho em segundo plano: $($_.Exception.Message)"
+    }
+}
+
+function Write-Fila {
+    $m = $null
+    while ($script:Fila.TryDequeue([ref]$m)) { & $script:OnLog $m }
+}
+
+$bomba = New-Object Windows.Forms.Timer
+$bomba.Interval = 100
+$bomba.Add_Tick({
+    Write-Fila
+    foreach ($t in @($script:Trabalhos)) {
+        if (-not $t.h.IsCompleted) { continue }
+        [void]$script:Trabalhos.Remove($t)
+        $saida = $null; $erro = $null
+        try { $saida = @($t.ps.EndInvoke($t.h)) } catch { $erro = $_.Exception.Message }
+        if ($t.ps.InvocationStateInfo.State -eq 'Failed' -and $t.ps.InvocationStateInfo.Reason) { $erro = $t.ps.InvocationStateInfo.Reason.Message }
+        try { $t.ps.Dispose(); $t.rs.Close(); $t.rs.Dispose() } catch { }
+        Write-Fila
+        try { & $t.fim $saida $erro } catch { Say "ERRO: $($_.Exception.Message)" }
+    }
+    if ($script:Trabalhos.Count -eq 0) { $bomba.Stop() }
+})
+
+function Get-Ultimo($saida) {
+    if (-not $saida -or $saida.Count -eq 0) { return $null }
+    return $saida[$saida.Count - 1]
+}
 
 $script:Estados = @{}
 
@@ -255,11 +348,13 @@ function Update-Botoes {
 }
 
 function Set-Ocupado([bool]$o) {
+    $script:Ocupado = $o
     foreach ($b in $botoes.Values) { $b.Enabled = -not $o }
-    $menu.Enabled = -not $o
-    $form.UseWaitCursor = $o
+    $mRemotes.Enabled = -not $o
+    # Cursor de "trabalhando" só na lista e nas barras: o registro continua livre para selecionar e copiar.
+    $c = if ($o) { [Windows.Forms.Cursors]::AppStarting } else { [Windows.Forms.Cursors]::Default }
+    $lista.Cursor = $c; $barra.Cursor = $c; $cabecalho.Cursor = $c
     if (-not $o) { Update-Botoes }
-    [Windows.Forms.Application]::DoEvents()
 }
 
 function Add-Linha($tag, [string[]]$cols, $cor) {
@@ -301,22 +396,62 @@ function Get-EstadoSimples($e) {
         if ($outros.Count) { return @{ texto = 'Ativo'; cor = [Drawing.Color]::DarkOrange; dica = "Funcionando, mas: $($outros[0]). Clique em Conferir e consertar." } }
         return @{ texto = 'Ativo'; cor = [Drawing.Color]::DarkGreen; dica = 'Tudo certo.' }
     }
+    if ($e.processo -and $e.conexao -eq 'iniciando') { return @{ texto = 'Iniciando'; cor = [Drawing.Color]::SteelBlue; dica = 'Acabou de subir; esperando registrar no claude.ai. A lista confere sozinha a cada minuto.' } }
     if ($e.processo) { return @{ texto = 'Erro'; cor = [Drawing.Color]::Firebrick; dica = "Está rodando mas não conectou ($($e.conexao)). Veja o registro embaixo; tente Reiniciar." } }
     return @{ texto = 'Parado'; cor = [Drawing.Color]::DarkOrange; dica = 'Clique em Conferir e consertar para subir.' }
 }
 
-function Update-Lista {
+# Leitura do estado (roda em segundo plano): só dados, sem mexer na janela.
+$script:CodigoLeitura = {
+    $procs = Get-ProcessosRC
+    $rem = @(foreach ($r in Read-Remotes) { $e = Get-Estado $r $procs; [pscustomobject]@{ r = $r; e = $e } })
+    $mod = @(foreach ($m in Get-ModelosPendentes) {
+        $pasta = if ($m.pasta) { $m.pasta } else { Get-PastaPadrao }
+        $conta = Get-ContaDeModelo $m
+        [pscustomobject]@{ m = $m; pasta = $pasta; conta = $conta }
+    })
+    $sol = @(foreach ($s in Find-TarefasSoltas) {
+        $p = Find-ProcessoSolta $s $procs
+        $n = if ($p) { Get-Sessoes $p } else { 0 }
+        [pscustomobject]@{ s = $s; p = $p; sessoes = $n }
+    })
+    $versao = Get-ClaudeVersao
+    $admin = Test-Admin
+    [pscustomobject]@{ leitura = $true; remotes = $rem; modelos = $mod; soltas = $sol; versao = $versao; admin = $admin }
+}
+
+$script:UltimoResumo = ''
+$script:ComDetalhe = $false
+$script:ResumoPendente = $false
+
+# Lê o estado em segundo plano e depois redesenha a lista. -Detalhe: escreve no registro o resumo e o detalhe da linha.
+function Update-Lista([switch]$Detalhe) {
+    if ($Detalhe) { $script:ComDetalhe = $true }
+    Set-Ocupado $true
+    $subtitulo.Text = "PC $env:COMPUTERNAME   ·   lendo o estado..."
+    Start-Fundo $script:CodigoLeitura $null {
+        param($saida, $erro)
+        $l = $null
+        foreach ($x in @($saida)) { if ($x -and $x.leitura) { $l = $x } }
+        if ($erro -or -not $l) {
+            Say "ERRO ao ler o estado: $erro"
+        } else {
+            try { Show-Leitura $l } catch { Say "ERRO ao mostrar a lista: $($_.Exception.Message)" }
+        }
+        $script:ComDetalhe = $false
+        Set-Ocupado $false
+    }
+}
+
+function Show-Leitura($l) {
     $sel = Get-Selecionado
     $selId = if ($sel) { $sel.chave } else { '' }
     $script:Lendo = $true
-    $topo.Text = 'Lendo o estado...'
-    [Windows.Forms.Application]::DoEvents()
     $lista.BeginUpdate()
     $lista.Items.Clear()
-    $procs = Get-ProcessosRC
     $pendentes = @()
-    foreach ($r in Read-Remotes) {
-        $e = Get-Estado $r $procs
+    foreach ($x in @($l.remotes)) {
+        $r = $x.r; $e = $x.e
         $script:Estados[$r.id] = $e
         $est = Get-EstadoSimples $e
         $conta = Get-ContaTexto $r.conta $e.login
@@ -325,17 +460,15 @@ function Update-Lista {
         Add-Linha ([pscustomobject]@{ tipo = 'remote'; chave = "r:$($r.id)"; r = $r }) @($nome, $est.texto, $conta, $sessoes, $r.pasta, $est.dica) $est.cor
         if ($est.texto -ne 'Ativo' -or $est.cor -ne [Drawing.Color]::DarkGreen) { $pendentes += "$($r.nome) ($($est.texto))" }
     }
-    foreach ($m in Get-ModelosPendentes) {
-        $pasta = if ($m.pasta) { $m.pasta } else { Get-PastaPadrao }
-        $conta = Get-ContaNome (Get-ContaDeModelo $m)
-        Add-Linha ([pscustomobject]@{ tipo = 'modelo'; chave = "m:$($m.nome)"; m = $m }) @($m.nome, 'Não criado', $conta, '-', $pasta, 'Clique em Criar (ou Remover, se não quiser neste PC).') ([Drawing.Color]::SteelBlue)
-        $pendentes += "$($m.nome) (Não criado)"
+    foreach ($x in @($l.modelos)) {
+        Add-Linha ([pscustomobject]@{ tipo = 'modelo'; chave = "m:$($x.m.nome)"; m = $x.m }) @($x.m.nome, 'Não criado', (Get-ContaNome $x.conta), '-', $x.pasta, 'Clique em Criar (ou Remover, se não quiser neste PC).') ([Drawing.Color]::SteelBlue)
+        $pendentes += "$($x.m.nome) (Não criado)"
     }
-    foreach ($s in Find-TarefasSoltas) {
-        $p = Find-ProcessoSolta $s $procs
+    foreach ($x in @($l.soltas)) {
+        $s = $x.s; $p = $x.p
         $txt = if ($p) { 'Ativo' } else { 'Parado' }
         $cor = if ($p) { [Drawing.Color]::DarkGreen } else { [Drawing.Color]::DarkOrange }
-        $sessoes = if ($p) { [string](Get-Sessoes $p) } else { '-' }
+        $sessoes = if ($p) { [string]$x.sessoes } else { '-' }
         $nome = if ($s.nome) { $s.nome } else { $s.tarefa }
         Add-Linha ([pscustomobject]@{ tipo = 'solta'; chave = "s:$($s.tarefa)"; s = $s }) @($nome, $txt, (Get-ContaNome $s.conta), $sessoes, $s.pasta, 'Feito fora do programa: Gerenciar pelo programa, ou Remover.') $cor
         if (-not $p) { $pendentes += "$nome (Parado)" }
@@ -343,7 +476,7 @@ function Update-Lista {
     $lista.EndUpdate()
     foreach ($it in $lista.Items) { if ($it.Tag.chave -eq $selId) { $it.Selected = $true } }
     if ($lista.SelectedItems.Count -eq 0 -and $lista.Items.Count) { $lista.Items[0].Selected = $true }
-    $adm = if (Test-Admin) { '' } else { '   ATENÇÃO: aberto sem administrador, consertar vai falhar.' }
+    $adm = if ($l.admin) { '' } else { '   ATENÇÃO: aberto sem administrador, consertar vai falhar.' }
     if ($pendentes.Count) {
         $resumo = if ($pendentes.Count -eq 1) { "1 precisa de atenção: $($pendentes[0])" } else { "$($pendentes.Count) precisam de atenção: $($pendentes -join ', ')" }
         $topo.BackColor = New-Cor '#B91C1C'
@@ -355,18 +488,27 @@ function Update-Lista {
         $topo.BackColor = New-Cor '#374151'
     }
     $topo.Text = $resumo
-    $subtitulo.Text = "PC $env:COMPUTERNAME   ·   $(Get-ClaudeVersao)   ·   programa v$(Get-VersaoLocal)   ·   atualizado às $(Get-Date -Format HH:mm:ss)$adm"
+    $subtitulo.Text = "PC $env:COMPUTERNAME   ·   $($l.versao)   ·   programa v$(Get-VersaoLocal)   ·   atualizado às $(Get-Date -Format HH:mm:ss)$adm"
     $script:Lendo = $false
-    Say "Resumo: $resumo"
-    Update-Botoes
-    Show-Detalhe
+    $script:TemPendente = [bool]$pendentes.Count
+    # Na conferência automática só escreve no registro quando o resumo muda.
+    if ($script:ComDetalhe -or $resumo -ne $script:UltimoResumo) {
+        Say "Resumo: $resumo"
+        $script:UltimoResumo = $resumo
+        Update-Botoes
+        Show-Detalhe
+    } else { Update-Botoes }
 }
 
-function Invoke-Acao([scriptblock]$acao) {
+# Roda uma ação em segundo plano ($acao usa $ArgFundo) e depois relê o estado.
+function Invoke-Acao([scriptblock]$acao, $arg = $null) {
+    if ($script:Ocupado) { Say 'Espere terminar o que está em andamento.'; return }
     Set-Ocupado $true
-    try { & $acao } catch { Say "ERRO: $($_.Exception.Message)" }
-    finally { Set-Ocupado $false }
-    Update-Lista
+    Start-Fundo $acao $arg {
+        param($saida, $erro)
+        if ($erro) { Say "ERRO: $erro" }
+        Update-Lista -Detalhe
+    }
 }
 
 # ---------------------------------------------------------------- diálogo de remote (novo / editar)
@@ -444,21 +586,22 @@ function Show-DialogoRemote($r) {
 
 $lista.Add_SelectedIndexChanged({ Update-Botoes; if ($lista.SelectedItems.Count -and -not $script:Lendo) { Show-Detalhe } })
 $lista.Add_DoubleClick({ Show-Detalhe })
-$bAtualizar.Add_Click({ Invoke-Acao { } })
+$bAtualizar.Add_Click({ if (-not $script:Ocupado) { Update-Lista -Detalhe } })
 $bNovo.Add_Click({
     $r = Show-DialogoRemote $null
-    if ($r) { Invoke-Acao { Say "Criado '$($r.nome)'."; [void](Repair-Remote $r) } }
+    if ($r) { Invoke-Acao { Say "Criado '$($ArgFundo.nome)'."; [void](Repair-Remote $ArgFundo) } $r }
 })
 $bCriar.Add_Click({
     $s = Get-Selecionado
     if (-not $s) { return }
     Invoke-Acao {
+        $s = $ArgFundo
         if ($s.tipo -eq 'modelo') { $r = New-RemoteDeModelo $s.m }
         else { $r = Convert-TarefaSolta $s.s; Say "Tarefa '$($s.s.tarefa)' adotada como '$($r.nome)'." }
         [void](Repair-Remote $r)
-    }
+    } $s
 })
-$bConsertar.Add_Click({ $s = Get-Selecionado; Invoke-Acao { [void](Repair-Remote $s.r) } })
+$bConsertar.Add_Click({ $s = Get-Selecionado; Invoke-Acao { [void](Repair-Remote $ArgFundo) } $s.r })
 $bTudo.Add_Click({
     Invoke-Acao {
         foreach ($m in Get-ModelosPendentes) { Say "Criando '$($m.nome)' (sugerido)..."; [void](New-RemoteDeModelo $m) }
@@ -469,15 +612,16 @@ $bTudo.Add_Click({
 $bLogin.Add_Click({
     $s = Get-Selecionado
     Invoke-Acao {
-        Initialize-Conta $s.r.conta
-        if (Start-Login $s.r) {
-            $l = Get-Login $s.r.conta
-            $s.r.email = $l.email; Save-Remote $s.r
-            if (-not (Find-Processo $s.r (Get-ProcessosRC))) { [void](Repair-Remote $s.r) }
+        $r = $ArgFundo
+        Initialize-Conta $r.conta
+        if (Start-Login $r) {
+            $l = Get-Login $r.conta
+            $r.email = $l.email; Save-Remote $r
+            if (-not (Find-Processo $r (Get-ProcessosRC))) { [void](Repair-Remote $r) }
         }
-    }
+    } $s.r
 })
-$bTestar.Add_Click({ $s = Get-Selecionado; Invoke-Acao { [void](Test-Remote $s.r) } })
+$bTestar.Add_Click({ $s = Get-Selecionado; Invoke-Acao { [void](Test-Remote $ArgFundo) } $s.r })
 $bReiniciar.Add_Click({
     $s = Get-Selecionado
     $e = $script:Estados[$s.r.id]
@@ -485,12 +629,12 @@ $bReiniciar.Add_Click({
         $q = [Windows.Forms.MessageBox]::Show($form, "'$($s.r.nome)' tem $($e.sessoes) sessão(ões) abertas. Reiniciar derruba essas sessões (inclusive um Claude que esteja trabalhando nelas). Continuar?", 'Reiniciar', 'YesNo', 'Warning')
         if ($q -ne 'Yes') { return }
     }
-    Invoke-Acao { [void](Restart-Remote $s.r) }
+    Invoke-Acao { [void](Restart-Remote $ArgFundo) } $s.r
 })
 $bEditar.Add_Click({
     $s = Get-Selecionado
     $r = Show-DialogoRemote $s.r
-    if ($r) { Invoke-Acao { Say "Salvei '$($r.nome)'."; [void](Repair-Remote $r) } }
+    if ($r) { Invoke-Acao { Say "Salvei '$($ArgFundo.nome)'."; [void](Repair-Remote $ArgFundo) } $r }
 })
 $bRemover.Add_Click({
     $s = Get-Selecionado
@@ -500,16 +644,16 @@ $bRemover.Add_Click({
             $e = $script:Estados[$s.r.id]
             $aviso = if ($e -and $e.sessoes -gt 0) { "`r`n`r`nAtenção: ele tem $($e.sessoes) sessão(ões) abertas, que vão cair." } else { '' }
             $q = [Windows.Forms.MessageBox]::Show($form, "Remover '$($s.r.nome)'?`r`n`r`nEle para de rodar e a tarefa do Windows é apagada. O login da conta fica guardado.$aviso", 'Remover', 'YesNo', 'Warning')
-            if ($q -eq 'Yes') { Invoke-Acao { Remove-Remote $s.r } }
+            if ($q -eq 'Yes') { Invoke-Acao { Remove-Remote $ArgFundo } $s.r }
         }
         'solta' {
             $nome = if ($s.s.nome) { $s.s.nome } else { $s.s.tarefa }
             $q = [Windows.Forms.MessageBox]::Show($form, "Remover '$nome'?`r`n`r`nEle para de rodar (as sessões abertas caem) e a tarefa do Windows '$($s.s.tarefa)' é apagada. O login da conta fica guardado.", 'Remover', 'YesNo', 'Warning')
-            if ($q -eq 'Yes') { Invoke-Acao { Remove-TarefaSolta $s.s } }
+            if ($q -eq 'Yes') { Invoke-Acao { Remove-TarefaSolta $ArgFundo } $s.s }
         }
         'modelo' {
             $q = [Windows.Forms.MessageBox]::Show($form, "Não criar '$($s.m.nome)' neste PC?`r`n`r`nEle some da lista deste PC. Nada é apagado.", 'Remover', 'YesNo', 'Question')
-            if ($q -eq 'Yes') { Invoke-Acao { Hide-Modelo $s.m } }
+            if ($q -eq 'Yes') { Invoke-Acao { Hide-Modelo $ArgFundo } $s.m }
         }
     }
 })
@@ -524,52 +668,84 @@ $bLogs.Add_Click({
 
 $script:Atualizacao = $null
 
-function Test-Atualizacao([switch]$PodePedirLogin) {
-    try { $info = Get-AtualizacaoDisponivel -PodePedirLogin:$PodePedirLogin } catch { $info = $null }
-    $script:Atualizacao = $info
-    if ($info) {
-        $faixaTexto.Text = "Nova versão $($info.versao) disponível (você está na $(Get-VersaoLocal)). $($info.notas)"
-        $faixa.Visible = $true
-    } else { $faixa.Visible = $false }
+$script:VerificandoAtu = $false
+
+# Consulta o site em segundo plano. Modo: 'silencioso' (só mostra a faixa), 'verificar' (diz o resultado
+# no registro) ou 'loginsite' (diz se o login do site foi salvo).
+function Test-Atualizacao([switch]$PodePedirLogin, [string]$Modo = 'silencioso') {
+    if ($script:VerificandoAtu) { if ($Modo -ne 'silencioso') { Say 'Já estou consultando o site, espere um pouco.' }; return }
+    $script:VerificandoAtu = $true
+    $script:ModoAtu = $Modo
+    Start-Fundo {
+        $v = $null
+        try { $v = Get-VersaoSite -PodePedirLogin:$ArgFundo } catch { }
+        $info = $null
+        if ($v -and $v.versao) { try { if ([version]$v.versao -gt (Get-VersaoLocal)) { $info = $v } } catch { } }
+        [pscustomobject]@{ atualizacao = $true; info = $info; consultou = [bool]($v -and $v.versao) }
+    } ([bool]$PodePedirLogin) {
+        param($saida, $erro)
+        $script:VerificandoAtu = $false
+        $res = $null
+        foreach ($x in @($saida)) { if ($x -and $x.atualizacao) { $res = $x } }
+        $info = if ($res) { $res.info } else { $null }
+        $script:Atualizacao = $info
+        if ($info) {
+            $faixaTexto.Text = "Nova versão $($info.versao) disponível (você está na $(Get-VersaoLocal)). $($info.notas)"
+            $faixa.Visible = $true
+        } else { $faixa.Visible = $false }
+        switch ($script:ModoAtu) {
+            'verificar' {
+                if ($info) { Say "Nova versão $($info.versao) disponível: clique em Atualizar agora, na faixa amarela." }
+                elseif ($res -and $res.consultou) { Say "Você já está na versão mais nova ($(Get-VersaoLocal))." }
+                elseif (Get-SiteUrl) { Say 'Não consegui consultar o site agora (sem internet ou sem login do site).' }
+            }
+            'loginsite' {
+                if (Test-Path $script:AtuLogin) { Say 'Login do site salvo.' } else { Say 'Login do site não foi salvo (cancelado ou login/senha errados).' }
+            }
+        }
+    }
 }
 
 $bAtualizarApp.Add_Click({
-    if (-not $script:Atualizacao) { return }
+    if (-not $script:Atualizacao -or $script:Atualizando) { return }
+    $script:Atualizando = $true
     $bAtualizarApp.Enabled = $false; $bAtualizarApp.Text = 'Atualizando...'
-    $form.UseWaitCursor = $true
-    [Windows.Forms.Application]::DoEvents()
-    if (Install-Atualizacao $script:Atualizacao) {
-        Start-ProgramaDeNovo
-        $form.Close()
-        return
+    Say "Baixando a versão $($script:Atualizacao.versao)..."
+    Start-Fundo { Install-Atualizacao $ArgFundo } $script:Atualizacao {
+        param($saida, $erro)
+        $script:Atualizando = $false
+        if ((Get-Ultimo $saida) -eq $true) {
+            Start-ProgramaDeNovo
+            $form.Close()
+            return
+        }
+        $bAtualizarApp.Enabled = $true; $bAtualizarApp.Text = 'Atualizar agora'
+        [void][Windows.Forms.MessageBox]::Show($form, 'Não consegui baixar a atualização agora. Tente de novo em alguns minutos.', 'Atualização', 'OK', 'Warning')
     }
-    $form.UseWaitCursor = $false
-    $bAtualizarApp.Enabled = $true; $bAtualizarApp.Text = 'Atualizar agora'
-    [void][Windows.Forms.MessageBox]::Show($form, 'Não consegui baixar a atualização agora. Tente de novo em alguns minutos.', 'Atualização', 'OK', 'Warning')
 })
 
-$bVerificar.Add_Click({
-    $form.UseWaitCursor = $true; [Windows.Forms.Application]::DoEvents()
-    Test-Atualizacao -PodePedirLogin
-    $form.UseWaitCursor = $false
-    if ($script:Atualizacao) { Say "Nova versão $($script:Atualizacao.versao) disponível: clique em Atualizar agora, na faixa amarela." }
-    elseif (Get-SiteUrl) {
-        if (Get-VersaoSite) { Say "Você já está na versão mais nova ($(Get-VersaoLocal))." }
-        else { Say 'Não consegui consultar o site agora (sem internet ou sem login do site).' }
-    }
-})
+$bVerificar.Add_Click({ Say 'Consultando o site...'; Test-Atualizacao -PodePedirLogin -Modo 'verificar' })
 
 $relogio = New-Object Windows.Forms.Timer
 $relogio.Interval = 10 * 60 * 1000
-$relogio.Add_Tick({ if (-not $form.UseWaitCursor) { Test-Atualizacao } })
+$relogio.Add_Tick({ Test-Atualizacao })
+
+# Confere o estado sozinho: a cada minuto se algo precisa de atenção, senão a cada 5 minutos.
+$script:Voltas = 0
+$conferidor = New-Object Windows.Forms.Timer
+$conferidor.Interval = 60 * 1000
+$conferidor.Add_Tick({
+    $script:Voltas++
+    if ($script:Ocupado) { return }
+    if ($script:TemPendente -or ($script:Voltas % 5 -eq 0)) { Update-Lista }
+})
 
 $mSair.Add_Click({ $form.Close() })
 $mPastaApp.Add_Click({ Start-Process explorer.exe (Split-Path $PSScriptRoot -Parent) })
 $mPastaDados.Add_Click({ New-Item -ItemType Directory -Force $script:Base | Out-Null; Start-Process explorer.exe $script:Base })
 $mLoginSite.Add_Click({
     Remove-Item $script:AtuLogin -Force -ErrorAction SilentlyContinue
-    Test-Atualizacao -PodePedirLogin
-    if (Test-Path $script:AtuLogin) { Say 'Login do site salvo.' } else { Say 'Login do site não foi salvo (cancelado ou login/senha errados).' }
+    Test-Atualizacao -PodePedirLogin -Modo 'loginsite'
 })
 $mSite.Add_Click({ $u = Get-SiteUrl; if ($u) { Start-Process $u } })
 $mSobre.Add_Click({
@@ -578,9 +754,9 @@ $mSobre.Add_Click({
 
 function Start-Janela {
     & $ajustarColunas
-    Invoke-Acao { }
+    Update-Lista -Detalhe
     if ($script:ExeErro) { Say "Não consegui gerar o Claude Remote Manager.exe (o programa segue pelo PowerShell): $($script:ExeErro)" }
-    if (-not $Captura) { Test-Atualizacao -PodePedirLogin; $relogio.Start() }
+    if (-not $Captura) { Test-Atualizacao -PodePedirLogin; $relogio.Start(); $conferidor.Start() }
     if (Get-ModelosPendentes) { Say 'Há remotes "Não criado" (azul): selecione e clique Criar, ou Remover se não quiser neste PC.' }
 }
 
@@ -601,3 +777,8 @@ if ($Captura) {
 
 $form.Add_Shown({ Start-Janela })
 [void]$form.ShowDialog()
+# Algo ainda rodando em segundo plano (ex.: janela de login aberta)? Para tudo e fecha o programa de vez.
+if ($script:Trabalhos.Count) {
+    foreach ($t in @($script:Trabalhos)) { try { [void]$t.ps.BeginStop($null, $null) } catch { } }
+    [Environment]::Exit(0)
+}

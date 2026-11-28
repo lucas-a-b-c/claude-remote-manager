@@ -607,15 +607,26 @@ function Get-Sessoes($p) {
 function Get-Conexao($p) {
     if (-not $p) { return 'parado' }
     $f = Get-DebugDoProcesso $p
-    if (-not $f -or -not (Test-Path $f)) { return 'sem log' }
-    $idade = (Get-Date) - (Get-Item $f).LastWriteTime
+    $novo = $false
+    try { if ($p.CreationDate) { $novo = (((Get-Date) - [datetime]$p.CreationDate).TotalMinutes -lt 3) } } catch { }
+    if (-not $f -or -not (Test-Path $f)) { if ($novo) { return 'iniciando' } else { return 'sem log' } }
     $txt = @(Get-Content $f -Tail 400 -ErrorAction SilentlyContinue)
+    # O Windows nem sempre atualiza a data de um arquivo que continua aberto: usa também a hora escrita na última linha.
+    $quando = (Get-Item $f).LastWriteTime
+    for ($i = $txt.Count - 1; $i -ge 0 -and $i -ge $txt.Count - 30; $i--) {
+        if ($txt[$i] -match '(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?Z)') {
+            try { $h = ([DateTimeOffset]::Parse($Matches[1])).LocalDateTime; if ($h -gt $quando) { $quando = $h } } catch { }
+            break
+        }
+    }
+    $idade = (Get-Date) - $quando
     $iReg = -1; $iRuim = -1
     for ($i = 0; $i -lt $txt.Count; $i++) {
         if ($txt[$i] -match 'Registered, server environmentId|work/poll -> 200|heartbeat -> 200') { $iReg = $i }
         elseif ($txt[$i] -match 'giving up|Registration failed') { $iRuim = $i }
     }
     if ($iRuim -gt $iReg) { return 'com erro' }
+    if ($iReg -lt 0 -and $novo) { return 'iniciando' }
     if ($idade.TotalMinutes -gt 15) { return "sem sinal há $([int]$idade.TotalMinutes) min" }
     return 'conectado'
 }
@@ -633,7 +644,8 @@ function Get-Estado($r, $procs) {
     if ((Test-Path $r.pasta) -and -not (Test-Confianca $r.conta $r.pasta)) { $problemas += 'a pasta não está marcada como confiável nesta conta' }
     if (-not $p) { $problemas += 'o Remote Control não está rodando' }
     $conexao = Get-Conexao $p
-    if ($p -and $conexao -ne 'conectado') { $problemas += "o Remote Control está rodando, mas não conectou no claude.ai (conexão: $conexao)" }
+    if ($p -and $conexao -eq 'iniciando') { $problemas += 'o Remote Control acabou de subir e ainda está registrando no claude.ai (leva até uns 3 minutos)' }
+    elseif ($p -and $conexao -ne 'conectado') { $problemas += "o Remote Control está rodando, mas não conectou no claude.ai (conexão: $conexao)" }
     $nomeAntigo = [bool]($p -and -not (Test-TemTexto $p.CommandLine "--name `"$($r.nome)`""))
     return [pscustomobject]@{
         processo = $p; login = $login; problemas = $problemas; conexao = $conexao
@@ -643,8 +655,17 @@ function Get-Estado($r, $procs) {
 
 # ---------------------------------------------------------------- ações
 
+# O remote registrou no claude.ai? Olha o log do processo que está rodando agora (o lançador zera o
+# debug.log a cada início). Lê o arquivo mesmo aberto pelo claude e não confia na data dele.
+function Test-Registrou($r) {
+    $p = Find-Processo $r (Get-ProcessosRC)
+    if (-not $p) { return $false }
+    $f = Get-DebugDoProcesso $p
+    if (-not $f) { $f = Join-Path (Get-RcDir $r) 'debug.log' }
+    return ((Read-Compartilhado $f) -match 'Registered, server environmentId|work/poll -> 200|heartbeat -> 200')
+}
+
 function Wait-Registro($r, [int]$segundos = 90) {
-    $dbg = Join-Path (Get-RcDir $r) 'debug.log'
     $falha = Join-Path (Get-RcDir $r) 'FALHA-LOGIN.txt'
     $marca = Join-Path (Get-RcDir $r) 'ultimo-inicio.txt'
     $inicio = Get-Date
@@ -658,9 +679,7 @@ function Wait-Registro($r, [int]$segundos = 90) {
             Stop-ScheduledTask -TaskName $r.tarefa -ErrorAction SilentlyContinue
             Start-ScheduledTask -TaskName $r.tarefa -ErrorAction SilentlyContinue
         }
-        if ((Test-Path $dbg) -and (Get-Item $dbg).LastWriteTime -ge $inicio.AddSeconds(-5)) {
-            if (Select-String -Path $dbg -Pattern 'Registered, server environmentId' -Quiet) { return 'ok' }
-        }
+        if (((Get-Date) - $inicio).TotalSeconds -ge 4 -and (Test-Registrou $r)) { return 'ok' }
         if ((Test-Path $falha) -and (Get-Item $falha).LastWriteTime -ge $inicio) { return 'login' }
     }
     return 'tempo'
@@ -672,7 +691,12 @@ function Start-Remote($r) {
     switch (Wait-Registro $r) {
         'ok'    { Say "  OK: '$($r.nome)' subiu e está conectado."; return $true }
         'login' { Say '  O Remote Control não subiu: o Claude diz que a conta não está logada.'; Show-FimDoLog $r; return $false }
-        default { Say '  Não vi o registro em 90 s.'; Show-FimDoLog $r; return $false }
+        default {
+            if (Find-Processo $r (Get-ProcessosRC)) {
+                Say '  Está rodando, mas em 90 s ainda não confirmou o registro no claude.ai. A lista continua conferindo sozinha a cada minuto.'
+            } else { Say '  Não subiu em 90 s.' }
+            Show-FimDoLog $r; return $false
+        }
     }
 }
 
