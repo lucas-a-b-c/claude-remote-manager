@@ -266,6 +266,8 @@ $script:Fila = New-Object 'System.Collections.Concurrent.ConcurrentQueue[string]
 $script:Trabalhos = New-Object System.Collections.ArrayList
 $script:Ocupado = $false
 $script:SemFundo = $false
+$script:PassoFundo = [hashtable]::Synchronized(@{ p = '' })
+$global:PassoFundo = $script:PassoFundo
 # Carrega o núcleo pelo texto (sem depender da política de execução nem do caminho do script).
 $script:PreparoFundo = @'
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
@@ -298,11 +300,12 @@ function Start-Fundo([scriptblock]$codigo, $arg, [scriptblock]$aoTerminar) {
         $rs.SessionStateProxy.SetVariable('FilaLog', $script:Fila)
         $rs.SessionStateProxy.SetVariable('AppPasta', $PSScriptRoot)
         $rs.SessionStateProxy.SetVariable('ArgFundo', $arg)
+        $rs.SessionStateProxy.SetVariable('PassoFundo', $script:PassoFundo)
         $ps = [Management.Automation.PowerShell]::Create()
         $ps.Runspace = $rs
         [void]$ps.AddScript($script:PreparoFundo + "`r`n" + $codigo.ToString())
         $h = $ps.BeginInvoke()
-        [void]$script:Trabalhos.Add(@{ ps = $ps; rs = $rs; h = $h; fim = $aoTerminar; codigo = $codigo; arg = $arg })
+        [void]$script:Trabalhos.Add(@{ ps = $ps; rs = $rs; h = $h; fim = $aoTerminar; codigo = $codigo; arg = $arg; ini = (Get-Date); aviso = 30 })
         $bomba.Start()
     } catch {
         & $aoTerminar $null "não consegui iniciar o trabalho em segundo plano: $($_.Exception.Message)"
@@ -319,7 +322,14 @@ $bomba.Interval = 100
 $bomba.Add_Tick({
     Write-Fila
     foreach ($t in @($script:Trabalhos)) {
-        if (-not $t.h.IsCompleted) { continue }
+        if (-not $t.h.IsCompleted) {
+            $seg = ((Get-Date) - $t.ini).TotalSeconds
+            if ($t.codigo -eq $script:CodigoLeitura -and $seg -ge $t.aviso) {
+                $t.aviso += 30
+                Say "A leitura do estado está demorando ($([int]$seg) s). Passo atual: $($script:PassoFundo['p'])"
+            }
+            continue
+        }
         [void]$script:Trabalhos.Remove($t)
         $saida = $null; $erro = $null
         try { $saida = @($t.ps.EndInvoke($t.h)) } catch { $erro = $_.Exception.Message }
@@ -418,6 +428,7 @@ function Get-EstadoSimples($e) {
 
 # Leitura do estado (roda em segundo plano): só dados, sem mexer na janela.
 $script:CodigoLeitura = {
+    Set-Passo 'processos do claude (CIM)'
     $procs = Get-ProcessosRC
     $rem = @(foreach ($r in Read-Remotes) { $e = Get-Estado $r $procs; [pscustomobject]@{ r = $r; e = $e } })
     $mod = @(foreach ($m in Get-ModelosPendentes) {
@@ -425,13 +436,16 @@ $script:CodigoLeitura = {
         $conta = Get-ContaDeModelo $m
         [pscustomobject]@{ m = $m; pasta = $pasta; conta = $conta }
     })
+    Set-Passo 'tarefas agendadas soltas'
     $sol = @(foreach ($s in Find-TarefasSoltas) {
         $p = Find-ProcessoSolta $s $procs
         $n = if ($p) { Get-Sessoes $p } else { 0 }
         [pscustomobject]@{ s = $s; p = $p; sessoes = $n }
     })
+    Set-Passo 'versão do claude'
     $versao = Get-ClaudeVersao
     $admin = Test-Admin
+    Set-Passo 'fim'
     [pscustomobject]@{ leitura = $true; remotes = $rem; modelos = $mod; soltas = $sol; versao = $versao; admin = $admin }
 }
 
@@ -455,7 +469,19 @@ function Update-Lista([switch]$Detalhe) {
         }
         $script:ComDetalhe = $false
         Set-Ocupado $false
+        if ($erro -or -not $l) { Save-Teste 'ERRO' } else { Save-Teste 'OK' }
     }
+}
+
+# Modo de teste (CI): CRM_TESTE=<arquivo> grava o que a janela mostra depois da primeira leitura e fecha.
+function Save-Teste([string]$como) {
+    if (-not $env:CRM_TESTE -or $script:TesteGravado) { return }
+    $script:TesteGravado = $true
+    $linhas = @("RESULTADO: $como", "TOPO: $($topo.Text)", "SUB: $($subtitulo.Text)", "PASSO: $($script:PassoFundo['p'])", "SEMFUNDO: $($script:SemFundo)")
+    foreach ($it in $lista.Items) { $linhas += "LINHA: " + (($it.SubItems | ForEach-Object { $_.Text }) -join ' | ') }
+    $linhas += 'REGISTRO:'; $linhas += $detalhe.Text
+    [IO.File]::WriteAllText($env:CRM_TESTE, ($linhas -join "`r`n"))
+    $form.Close()
 }
 
 function Show-Leitura($l) {
@@ -771,7 +797,10 @@ function Start-Janela {
     & $ajustarColunas
     Update-Lista -Detalhe
     if ($script:ExeErro) { Say "Não consegui gerar o Claude Remote Manager.exe (o programa segue pelo PowerShell): $($script:ExeErro)" }
-    if (-not $Captura) { Test-Atualizacao -PodePedirLogin; $relogio.Start(); $conferidor.Start() }
+    if ($env:CRM_TESTE) {
+        $vigia = New-Object Windows.Forms.Timer; $vigia.Interval = 150000
+        $vigia.Add_Tick({ Write-Fila; Save-Teste 'TEMPO ESGOTADO' }); $vigia.Start()
+    } elseif (-not $Captura) { Test-Atualizacao -PodePedirLogin; $relogio.Start(); $conferidor.Start() }
     if (Get-ModelosPendentes) { Say 'Há remotes "Não criado" (azul): selecione e clique Criar, ou Remover se não quiser neste PC.' }
 }
 

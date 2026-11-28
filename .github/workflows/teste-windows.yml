@@ -1,0 +1,43 @@
+name: Teste no Windows
+# Abre o programa de verdade num Windows e confere que ele lê o estado (sem travar e sem erro).
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+jobs:
+  exe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Gerar o .exe (Mono, igual à publicação)
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends mono-mcs libmono-system-windows-forms4.0-cil
+          sh ferramentas/Gerar-Exe.sh "Claude Remote Manager.exe"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exe
+          path: Claude Remote Manager.exe
+  windows:
+    needs: exe
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: exe
+      - name: Instalar o Claude Code
+        shell: powershell
+        run: |
+          irm https://claude.ai/install.ps1 | iex
+          & "$env:USERPROFILE\.local\bin\claude.exe" --version
+      - name: Abrir o programa e conferir
+        shell: powershell
+        run: .\ferramentas\Teste-Windows.ps1
+      - name: Guardar o resultado
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: resultado
+          path: ${{ runner.temp }}\crm-*

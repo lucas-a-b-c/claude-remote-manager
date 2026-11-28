@@ -14,6 +14,9 @@ $script:PodeLogar = $true      # false no modo automático: nunca abre janela de
 
 $script:PadraoMarcador = 'padrao'
 
+# Passo atual da leitura em segundo plano (a janela mostra se demorar).
+function Set-Passo([string]$t) { if ($global:PassoFundo) { $global:PassoFundo['p'] = $t } }
+
 function Say([string]$m) {
     if ($script:OnLog) { & $script:OnLog $m } else { Write-Host $m }
 }
@@ -632,8 +635,11 @@ function Get-Conexao($p) {
 }
 
 function Get-Estado($r, $procs) {
+    Set-Passo "'$($r.nome)': processo"
     $p = Find-Processo $r $procs
+    Set-Passo "'$($r.nome)': login da conta (claude auth status)"
     $login = Get-Login $r.conta
+    Set-Passo "'$($r.nome)': tarefa, lançador e pasta"
     $falha = Join-Path (Get-RcDir $r) 'FALHA-LOGIN.txt'
     $problemas = @()
     if (-not (Test-Path $r.pasta)) { $problemas += 'a pasta de trabalho não existe' }
@@ -643,13 +649,14 @@ function Get-Estado($r, $procs) {
     if (-not (Test-Lancador $r)) { $problemas += 'o lançador precisa ser criado ou atualizado' }
     if ((Test-Path $r.pasta) -and -not (Test-Confianca $r.conta $r.pasta)) { $problemas += 'a pasta não está marcada como confiável nesta conta' }
     if (-not $p) { $problemas += 'o Remote Control não está rodando' }
+    Set-Passo "'$($r.nome)': conexão (debug.log)"
     $conexao = Get-Conexao $p
     if ($p -and $conexao -eq 'iniciando') { $problemas += 'o Remote Control acabou de subir e ainda está registrando no claude.ai (leva até uns 3 minutos)' }
     elseif ($p -and $conexao -ne 'conectado') { $problemas += "o Remote Control está rodando, mas não conectou no claude.ai (conexão: $conexao)" }
     $nomeAntigo = [bool]($p -and -not (Test-TemTexto $p.CommandLine "--name `"$($r.nome)`""))
     return [pscustomobject]@{
         processo = $p; login = $login; problemas = $problemas; conexao = $conexao
-        sessoes = (Get-Sessoes $p); nomeAntigo = $nomeAntigo
+        sessoes = $(Set-Passo "'$($r.nome)': sessões"; Get-Sessoes $p); nomeAntigo = $nomeAntigo
     }
 }
 
