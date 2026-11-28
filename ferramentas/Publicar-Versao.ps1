@@ -23,8 +23,8 @@ $downloads = Join-Path $Site 'downloads'
 New-Item -ItemType Directory -Force $downloads | Out-Null
 $zip = Join-Path $downloads 'claude-remote-manager.zip'
 if (Test-Path $zip) { Remove-Item $zip -Force }
-# O pacote leva só a pasta app (a atualização não recria o .bat nem o README que o usuário apagou).
-$itens = @(Join-Path $raiz 'app')
+# O pacote leva a pasta app e o Instalar.bat (para PC novo). A atualização só troca a pasta app.
+$itens = @((Join-Path $raiz 'app'), (Join-Path $raiz 'Instalar.bat'))
 Compress-Archive -Path $itens -DestinationPath $zip
 
 $todos = Get-Content $jsonSite -Raw -Encoding UTF8 | ConvertFrom-Json

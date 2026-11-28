@@ -42,6 +42,8 @@ Memória compartilhada entre as contas do Claude que trabalham neste repositóri
 
 - 28/11/2026, sessão na nuvem: 1.5.4, a 1.5.3 abria com a lista vazia no PC Lucas: a thread de fundo não carregava o Nucleo.ps1 (as funções não existiam lá; causa exata não confirmada) e os erros eram ignorados. Agora o núcleo é carregado pelo texto ([scriptblock]::Create, sem política de execução nem $PSScriptRoot), os erros da thread de fundo aparecem no registro, e se mesmo assim não carregar o programa volta a rodar tudo na thread da janela (como na 1.5.2). A 1.5.3 não consegue se atualizar sozinha (a consulta ao site também rodava na thread quebrada): instalar a 1.5.4 à mão. Não testado no Windows.
 
+- 28/11/2026, sessão na nuvem: 1.5.5, instalação em PC novo: o zip do site tem `Instalar.bat` na raiz (pede administrador e chama `app\Instalar.ps1`), que copia a pasta app para `%LOCALAPPDATA%\Programs\Claude Remote Manager`, gera o .exe, cria atalhos na área de trabalho e no menu Iniciar e abre o programa. A atualização continua trocando só a pasta app (o Instalar.bat não vai para a pasta instalada). A página do site mostra os 3 passos. Não testado no Windows.
+
 ## Pendente
 
 - Publicar versão nova: `ferramentas/Publicar-Versao.ps1` (ou pedir ao Claude), commit e push no app e no site.
