@@ -373,6 +373,35 @@ function Set-Confianca($conta, $pasta) {
     [IO.File]::WriteAllText($f, $s.Serialize($d), (New-Object Text.UTF8Encoding $false))
 }
 
+# Primeira vez que uma conta roda "claude remote-control", ele pergunta "Enable Remote Control? (y/n)"
+# e fica parado esperando (ninguém responde: roda escondido). A resposta fica em remoteDialogSeen no .claude.json da conta.
+function Test-RemoteAceito($conta) {
+    $f = Get-ContaJson $conta
+    if (-not (Test-Path $f)) { return $false }
+    try { $d = (New-Serializador).DeserializeObject([IO.File]::ReadAllText($f)) } catch { return $false }
+    return [bool]($d -and $d.ContainsKey('remoteDialogSeen') -and $d['remoteDialogSeen'] -eq $true)
+}
+
+function Set-RemoteAceito($conta) {
+    if (Test-RemoteAceito $conta) { return }
+    $f = Get-ContaJson $conta
+    $s = New-Serializador
+    $d = $null
+    if (Test-Path $f) { $d = $s.DeserializeObject([IO.File]::ReadAllText($f)) }
+    if (-not $d) { $d = [System.Collections.Generic.Dictionary[string,object]]::new() }
+    $d['remoteDialogSeen'] = $true
+    New-Item -ItemType Directory -Force (Split-Path $f) | Out-Null
+    [IO.File]::WriteAllText($f, $s.Serialize($d), (New-Object Text.UTF8Encoding $false))
+    Say '  Respondi "sim" à pergunta "Enable Remote Control?" desta conta (só pergunta uma vez).'
+}
+
+# O Remote Control deste remote está parado na pergunta "Enable Remote Control? (y/n)"?
+function Test-PerguntaRC($r) {
+    $f = Join-Path (Get-RcDir $r) 'saida.log'
+    $t = (Read-Compartilhado $f).TrimEnd()
+    return ($t -match 'Enable Remote Control\? \(y/n\)$')
+}
+
 # Conta nova: copia o settings.json da conta padrão (preferências, sem login).
 function Initialize-Conta($conta) {
     if (-not $conta) { return }
@@ -653,7 +682,9 @@ function Get-Estado($r, $procs) {
     if (-not $p) { $problemas += 'o Remote Control não está rodando' }
     Set-Passo "'$($r.nome)': conexão (debug.log)"
     $conexao = Get-Conexao $p
-    if ($p -and $conexao -eq 'iniciando') { $problemas += 'o Remote Control acabou de subir e ainda está registrando no claude.ai (leva até uns 3 minutos)' }
+    if ($p -and $conexao -ne 'conectado' -and (Test-PerguntaRC $r)) { $conexao = 'esperando confirmação' }
+    if ($p -and $conexao -eq 'esperando confirmação') { $problemas += 'o Remote Control está parado na pergunta "Enable Remote Control? (y/n)" (Conferir e consertar ou Reiniciar resolve)' }
+    elseif ($p -and $conexao -eq 'iniciando') { $problemas += 'o Remote Control acabou de subir e ainda está registrando no claude.ai (leva até uns 3 minutos)' }
     elseif ($p -and $conexao -ne 'conectado') { $problemas += "o Remote Control está rodando, mas não conectou no claude.ai (conexão: $conexao)" }
     $nomeAntigo = [bool]($p -and -not (Test-TemTexto $p.CommandLine "--name `"$($r.nome)`""))
     return [pscustomobject]@{
@@ -695,6 +726,7 @@ function Wait-Registro($r, [int]$segundos = 90) {
 }
 
 function Start-Remote($r) {
+    Set-RemoteAceito $r.conta
     Start-ScheduledTask -TaskName $r.tarefa -ErrorAction Stop
     Say '  Tarefa iniciada; esperando o Remote Control registrar no claude.ai...'
     switch (Wait-Registro $r) {
@@ -774,6 +806,13 @@ function Repair-Remote($r) {
         if ($r.email -ne $login.email) { $r.email = $login.email; Save-Remote $r }
     }
 
+    if ($p -and (Test-PerguntaRC $r) -and (Get-Conexao $p) -ne 'conectado') {
+        # Parado na pergunta "Enable Remote Control?": não está funcionando, então reinicia já respondido.
+        Say '  Estava parado na pergunta "Enable Remote Control? (y/n)". Vou responder e reiniciar.'
+        Stop-Remote $r
+        Wait-Um 1500
+        $p = $null
+    }
     if ($p) {
         Say "  Já está rodando (PID $($p.ProcessId)); não reiniciei para não derrubar as sessões."
         if (-not (Test-TemTexto $p.CommandLine "--name `"$($r.nome)`"")) { Say '  O nome novo vale depois de clicar em Reiniciar (ou no próximo boot).' }

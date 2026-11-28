@@ -50,6 +50,8 @@ Memória compartilhada entre as contas do Claude que trabalham neste repositóri
 
 - 28/11/2026, sessão na nuvem: 1.5.8, a leitura reescreve sozinha o lançador de versão antiga (Gufe aparecia "o lançador precisa ser atualizado"; não derruba nada, vale no próximo início). Remote que registrou e não teve erro depois conta como conectado mesmo com o debug.log parado (Cruz Verbena aparecia Erro "sem sinal há 37 min" com 0 sessões; sem sessões o log fica quieto). Testado no Windows pelo CI.
 
+- 28/11/2026, sessão na nuvem: 1.5.9, causa da Cruz Verbena não registrar: na primeira vez de uma conta, `claude remote-control` pergunta "Enable Remote Control? (y/n)" e fica parado (visto no saida.log do PC Lucas). A resposta fica em `remoteDialogSeen: true` no .claude.json da conta (achado no código do CLI 2.1.332). O programa grava isso antes de subir (Start-Remote) e, se o processo já está parado na pergunta, Conferir e consertar derruba e sobe de novo já respondido. Estado mostra Erro com essa explicação. Testado no CI.
+
 ## Pendente
 
 - Publicar versão nova: `ferramentas/Publicar-Versao.ps1` (ou pedir ao Claude), commit e push no app e no site.

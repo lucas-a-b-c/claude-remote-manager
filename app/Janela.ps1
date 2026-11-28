@@ -421,6 +421,7 @@ function Get-EstadoSimples($e) {
         if ($outros.Count) { return @{ texto = 'Ativo'; cor = [Drawing.Color]::DarkOrange; dica = "Funcionando, mas: $($outros[0]). Clique em Conferir e consertar." } }
         return @{ texto = 'Ativo'; cor = [Drawing.Color]::DarkGreen; dica = 'Tudo certo.' }
     }
+    if ($e.processo -and $e.conexao -eq 'esperando confirmação') { return @{ texto = 'Erro'; cor = [Drawing.Color]::Firebrick; dica = 'Parado na pergunta "Enable Remote Control?". Clique em Conferir e consertar.' } }
     if ($e.processo -and $e.conexao -eq 'iniciando') { return @{ texto = 'Iniciando'; cor = [Drawing.Color]::SteelBlue; dica = 'Acabou de subir; esperando registrar no claude.ai. A lista confere sozinha a cada minuto.' } }
     if ($e.processo) { return @{ texto = 'Erro'; cor = [Drawing.Color]::Firebrick; dica = "Está rodando mas não conectou ($($e.conexao)). Veja o registro embaixo; tente Reiniciar." } }
     return @{ texto = 'Parado'; cor = [Drawing.Color]::DarkOrange; dica = 'Clique em Conferir e consertar para subir.' }

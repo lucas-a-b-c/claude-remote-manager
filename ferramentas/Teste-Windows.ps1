@@ -9,6 +9,18 @@ New-Item -ItemType Directory -Force 'C:\crm-teste' | Out-Null
 Save-Remote (New-Remote 'Teste CI' '' 'C:\crm-teste')
 Save-Remote (New-Remote 'Teste CI conta 2' (Join-Path $env:USERPROFILE '.claude-contas\teste-ci') 'C:\crm-teste')
 
+# Pergunta "Enable Remote Control?": detecta no saida.log e responde no .claude.json da conta.
+$rt = New-Remote 'Teste pergunta' (Join-Path $env:USERPROFILE '.claude-contas\teste-pergunta') 'C:\crm-teste'
+New-Item -ItemType Directory -Force (Get-RcDir $rt) | Out-Null
+[IO.File]::WriteAllText((Join-Path (Get-RcDir $rt) 'saida.log'), "Take this session with you...`r`nEnable Remote Control? (y/n) ")
+if (-not (Test-PerguntaRC $rt)) { throw 'Test-PerguntaRC não viu a pergunta.' }
+if (Test-RemoteAceito $rt.conta) { throw 'Test-RemoteAceito deveria ser falso numa conta nova.' }
+Set-RemoteAceito $rt.conta
+if (-not (Test-RemoteAceito $rt.conta)) { throw 'Set-RemoteAceito não gravou remoteDialogSeen.' }
+Set-Confianca $rt.conta 'C:\crm-teste'
+if (-not (Test-RemoteAceito $rt.conta)) { throw 'Set-Confianca apagou remoteDialogSeen.' }
+Write-Host 'Pergunta Enable Remote Control: OK'
+
 $saida = Join-Path $env:RUNNER_TEMP 'crm-resultado.txt'
 $tela = Join-Path $env:RUNNER_TEMP 'crm-tela.png'
 Remove-Item $saida -ErrorAction SilentlyContinue
