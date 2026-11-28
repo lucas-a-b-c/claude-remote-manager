@@ -430,7 +430,10 @@ function Get-EstadoSimples($e) {
 $script:CodigoLeitura = {
     Set-Passo 'processos do claude (CIM)'
     $procs = Get-ProcessosRC
-    $rem = @(foreach ($r in Read-Remotes) { $e = Get-Estado $r $procs; [pscustomobject]@{ r = $r; e = $e } })
+    $rem = @(foreach ($r in Read-Remotes) {
+        # Lançador de versão antiga: reescreve na hora (não derruba nada; vale no próximo início).
+        if ((Test-Path (Get-RcDir $r)) -and -not (Test-Lancador $r)) { try { Write-Lancador $r } catch { } }
+        $e = Get-Estado $r $procs; [pscustomobject]@{ r = $r; e = $e } })
     $mod = @(foreach ($m in Get-ModelosPendentes) {
         $pasta = if ($m.pasta) { $m.pasta } else { Get-PastaPadrao }
         $conta = Get-ContaDeModelo $m

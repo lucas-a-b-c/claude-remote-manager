@@ -48,6 +48,8 @@ Memória compartilhada entre as contas do Claude que trabalham neste repositóri
 
 - 28/11/2026, sessão na nuvem: 1.5.7, as versões 1.5.2 a 1.5.6 estavam quebradas por um erro de sintaxe no Nucleo.ps1 (`$dir:` dentro de uma string; o PowerShell lê como unidade de disco). Agora há teste de verdade no Windows: `.github/workflows/teste-windows.yml` gera o .exe com o Mono, confere a sintaxe de todos os .ps1, instala o Claude Code e abre o .exe em modo de teste (`CRM_TESTE=<arquivo>`, `ferramentas/Teste-Windows.ps1`), exigindo lista carregada sem erro. Passou (leitura em 6 s, em segundo plano). Publicar só com esse teste verde. A janela também mostra o passo da leitura quando demora.
 
+- 28/11/2026, sessão na nuvem: 1.5.8, a leitura reescreve sozinha o lançador de versão antiga (Gufe aparecia "o lançador precisa ser atualizado"; não derruba nada, vale no próximo início). Remote que registrou e não teve erro depois conta como conectado mesmo com o debug.log parado (Cruz Verbena aparecia Erro "sem sinal há 37 min" com 0 sessões; sem sessões o log fica quieto). Testado no Windows pelo CI.
+
 ## Pendente
 
 - Publicar versão nova: `ferramentas/Publicar-Versao.ps1` (ou pedir ao Claude), commit e push no app e no site.

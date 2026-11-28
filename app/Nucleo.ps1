@@ -630,6 +630,8 @@ function Get-Conexao($p) {
     }
     if ($iRuim -gt $iReg) { return 'com erro' }
     if ($iReg -lt 0 -and $novo) { return 'iniciando' }
+    # Registrou e não deu erro depois: está conectado, mesmo que parado sem atividade (sem sessões o log fica quieto).
+    if ($iReg -ge 0) { return 'conectado' }
     if ($idade.TotalMinutes -gt 15) { return "sem sinal há $([int]$idade.TotalMinutes) min" }
     return 'conectado'
 }
