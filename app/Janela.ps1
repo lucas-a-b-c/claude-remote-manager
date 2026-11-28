@@ -278,6 +278,7 @@ function Show-Detalhe {
     $l = @("Detalhes de '$($s.r.nome)' (linha selecionada)   conta: $(Get-ContaDir $s.r.conta)")
     if ($e.problemas.Count) { $l += @($e.problemas | ForEach-Object { "  - $_" }) } else { $l += "  '$($s.r.nome)' está funcionando." }
     $detalhe.AppendText(($l -join "`r`n") + "`r`n")
+    if ((Get-EstadoSimples $e).texto -ne 'Ativo') { Show-FimDoLog $s.r 6 }
 }
 
 # Nome amigável da conta (pasta de configuração).
@@ -300,7 +301,7 @@ function Get-EstadoSimples($e) {
         if ($outros.Count) { return @{ texto = 'Ativo'; cor = [Drawing.Color]::DarkOrange; dica = "Funcionando, mas: $($outros[0]). Clique em Conferir e consertar." } }
         return @{ texto = 'Ativo'; cor = [Drawing.Color]::DarkGreen; dica = 'Tudo certo.' }
     }
-    if ($e.processo) { return @{ texto = 'Erro'; cor = [Drawing.Color]::Firebrick; dica = "Rodando, mas $($e.conexao). Clique em Testar conexão ou Reiniciar." } }
+    if ($e.processo) { return @{ texto = 'Erro'; cor = [Drawing.Color]::Firebrick; dica = "Está rodando mas não conectou ($($e.conexao)). Veja o registro embaixo; tente Reiniciar." } }
     return @{ texto = 'Parado'; cor = [Drawing.Color]::DarkOrange; dica = 'Clique em Conferir e consertar para subir.' }
 }
 

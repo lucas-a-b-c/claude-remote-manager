@@ -36,6 +36,8 @@ Memória compartilhada entre as contas do Claude que trabalham neste repositóri
 
 - 28/11/2026, sessão na nuvem: 1.5.1, a janela parecia travada enquanto esperava o Remote Control registrar (Wait-Um dormia 1 s por vez); agora dorme em pedaços de 40 ms. Depois de um login bem-sucedido, apaga FALHA-LOGIN.txt (antes pedia login de novo). Se não registrar, mostra as últimas linhas do remote-control.log no registro. No PC Lucas a Cruz Verbena logou (cruzverbenagroup@gmail.com) mas não vimos ainda se registrou.
 
+- 28/11/2026, sessão na nuvem: 1.5.2, o detalhe dizia "está funcionando" com o estado Erro; agora, se o processo roda mas não conectou, o detalhe diz isso. O lançador grava a saída do `claude remote-control` em `rc\<id>\saida.log` (antes ia para nul) e a janela mostra o fim de saida.log, remote-control.log e debug.log quando o remote não está Ativo. Objetivo: ver por que a Cruz Verbena roda e não registra (suspeita: pergunta de primeira execução na conta nova). Não testado no Windows.
+
 ## Pendente
 
 - Publicar versão nova: `ferramentas/Publicar-Versao.ps1` (ou pedir ao Claude), commit e push no app e no site.

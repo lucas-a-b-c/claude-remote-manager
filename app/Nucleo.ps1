@@ -29,12 +29,18 @@ function Wait-Um([int]$ms = 300) {
 
 # Mostra no registro as últimas linhas do log do Remote Control (para saber por que não subiu).
 function Show-FimDoLog($r, [int]$linhas = 8) {
-    $log = Join-Path (Get-RcDir $r) 'remote-control.log'
-    if (-not (Test-Path $log)) { Say '  (o remote-control.log ainda não existe: o Windows não chegou a rodar o lançador)'; return }
-    $t = @(Get-Content $log -Tail 40 -ErrorAction SilentlyContinue | ForEach-Object { ($_ -replace '\x1b\[[0-9;?]*[A-Za-z]', '').Trim() } | Where-Object { $_ })
-    if (-not $t.Count) { Say '  (o remote-control.log está vazio)'; return }
-    Say '  Últimas linhas do remote-control.log:'
-    foreach ($l in ($t | Select-Object -Last $linhas)) { Say "    $l" }
+    $dir = Get-RcDir $r
+    $achou = $false
+    foreach ($nome in 'saida.log', 'remote-control.log', 'debug.log') {
+        $log = Join-Path $dir $nome
+        if (-not (Test-Path $log)) { continue }
+        $achou = $true
+        $t = @(Get-Content $log -Tail 60 -ErrorAction SilentlyContinue | ForEach-Object { ($_ -replace '\x1b\[[0-9;?]*[A-Za-z]', '' -replace '\x1b\][^\x07]*\x07', '').Trim() } | Where-Object { $_ })
+        if (-not $t.Count) { Say "  ($nome está vazio)"; continue }
+        Say "  Últimas linhas do ${nome}:"
+        foreach ($l in ($t | Select-Object -Last $linhas)) { Say "    $l" }
+    }
+    if (-not $achou) { Say "  (nenhum log em $dir: o Windows não chegou a rodar o lançador)" }
 }
 
 function Test-Admin {
@@ -448,7 +454,7 @@ if exist "%DBG%" move /y "%DBG%" "%DBG%.old" >nul
 forfiles /p "%DIR%" /m bridge-transcript-*.jsonl /d -7 /c "cmd /c del @path" >nul 2>&1
 forfiles /p "%DIR%" /m debug-cse_*.log* /d -7 /c "cmd /c del @path" >nul 2>&1
 echo %date% %time%> "%DIR%\ultimo-inicio.txt"
-"$exe" remote-control --spawn $($r.spawn) --name "$($r.nome)" --debug-file "%DBG%" > nul 2> "%LOG%"
+"$exe" remote-control --spawn $($r.spawn) --name "$($r.nome)" --debug-file "%DBG%" > "%DIR%\saida.log" 2> "%LOG%"
 set "RC=%errorlevel%"
 findstr /i /c:"logged in" /c:"auth login" /c:"401" /c:"expired" /c:"unauthorized" "%LOG%" >nul
 if %errorlevel%==0 goto falhou
@@ -626,9 +632,11 @@ function Get-Estado($r, $procs) {
     if (-not (Test-Lancador $r)) { $problemas += 'o lançador precisa ser criado ou atualizado' }
     if ((Test-Path $r.pasta) -and -not (Test-Confianca $r.conta $r.pasta)) { $problemas += 'a pasta não está marcada como confiável nesta conta' }
     if (-not $p) { $problemas += 'o Remote Control não está rodando' }
+    $conexao = Get-Conexao $p
+    if ($p -and $conexao -ne 'conectado') { $problemas += "o Remote Control está rodando, mas não conectou no claude.ai (conexão: $conexao)" }
     $nomeAntigo = [bool]($p -and -not (Test-TemTexto $p.CommandLine "--name `"$($r.nome)`""))
     return [pscustomobject]@{
-        processo = $p; login = $login; problemas = $problemas; conexao = (Get-Conexao $p)
+        processo = $p; login = $login; problemas = $problemas; conexao = $conexao
         sessoes = (Get-Sessoes $p); nomeAntigo = $nomeAntigo
     }
 }
