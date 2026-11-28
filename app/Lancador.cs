@@ -52,6 +52,14 @@ public static class CrmLancador
         }
         catch (Exception ex)
         {
+            // Marca a falha: na próxima vez o programa abre pelo PowerShell até o .exe ser refeito.
+            try
+            {
+                string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude-remote-manager");
+                Directory.CreateDirectory(dir);
+                File.WriteAllText(Path.Combine(dir, "exe-falhou.txt"), DateTime.Now.ToString("s") + "\r\n" + ex.ToString());
+            }
+            catch { }
             MessageBox.Show("O programa parou com um erro:\r\n\r\n" + ex.Message, "Claude Remote Manager", MessageBoxButtons.OK, MessageBoxIcon.Error);
             return 1;
         }

@@ -59,6 +59,12 @@ function Switch-ParaExecutavel {
     if ($env:CRM_EXE) { return $false }
     try {
         if (-not (Update-Executavel)) { return $false }
+        # Se o .exe falhou depois de gerado, segue pelo PowerShell até ele ser refeito.
+        $falha = Join-Path (Split-Path $script:ExeMarca -Parent) 'exe-falhou.txt'
+        if ((Test-Path $falha) -and (Get-Item $falha).LastWriteTime -gt (Get-Item $script:ExeArquivo).LastWriteTime) {
+            $script:ExeErro = 'o .exe deu erro na última vez (veja ' + $falha + ').'
+            return $false
+        }
         Start-Process -FilePath $script:ExeArquivo | Out-Null
         return $true
     } catch { return $false }
