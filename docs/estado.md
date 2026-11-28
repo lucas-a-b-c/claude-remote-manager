@@ -26,6 +26,8 @@ Memória compartilhada entre as contas do Claude que trabalham neste repositóri
 
 - 28/11/2026, sessão na nuvem: 1.3.1, a janela de login dava "Não deu certo. Paste code here if prompted >" assim que abria: o processo que abrimos terminava logo, provavelmente porque o claude.exe passa o trabalho para outro processo. Agora a falha só conta com "Couldn't log in" na saída ou quando nenhum `claude.exe auth login` está vivo; a saída fica em `rc\<id>\login-saida.txt`. Não testado no Windows.
 
+- 28/11/2026, sessão na nuvem: 1.3.2, a atualização só troca a pasta `app` e atualiza o `.bat`/README só se ainda existem. O zip do site passa a ter só `app/` (`git archive HEAD app`), com `app/Abrir.bat` para instalação nova. Não testado no Windows.
+
 ## Pendente
 
 - Publicar versão nova: `ferramentas/Publicar-Versao.ps1` (ou pedir ao Claude), commit e push no app e no site.

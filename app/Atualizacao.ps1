@@ -117,7 +117,13 @@ function Install-Atualizacao($info) {
         Expand-Archive -Path $zip -DestinationPath $dest -Force
         # Confere que o pacote tem a cara do programa antes de copiar por cima.
         if (-not (Test-Path (Join-Path $dest 'app\Janela.ps1'))) { return $false }
-        Copy-Item -Path (Join-Path $dest '*') -Destination $script:AtuRaiz -Recurse -Force
+        # Atualiza a pasta app inteira. Arquivos soltos na raiz (o .bat, o README) só são atualizados
+        # se ainda existem: se você apagou, a atualização não traz de volta.
+        Copy-Item -Path (Join-Path $dest 'app\*') -Destination $PSScriptRoot -Recurse -Force
+        foreach ($f in Get-ChildItem $dest -File) {
+            $alvo = Join-Path $script:AtuRaiz $f.Name
+            if (Test-Path $alvo) { Copy-Item $f.FullName $alvo -Force }
+        }
         return $true
     } catch {
         return $false
