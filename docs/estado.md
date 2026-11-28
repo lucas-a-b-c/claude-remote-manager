@@ -40,6 +40,8 @@ Memória compartilhada entre as contas do Claude que trabalham neste repositóri
 
 - 28/11/2026, sessão na nuvem: 1.5.3, a janela travava enquanto lia o estado ou esperava o Remote Control (tudo rodava na thread da janela; cada leitura chama `claude auth status` por conta, CIM e tarefas agendadas). Agora ler o estado, as ações (conferir, testar, reiniciar, login, remover), a consulta ao site e a atualização rodam em outra thread (runspace STA), e o registro chega por uma fila. Botões Copiar registro e Limpar. A espera do registro não usa mais a data do debug.log (o Windows não atualiza a data de arquivo aberto) e lê o arquivo mesmo aberto pelo claude; nos primeiros 3 minutos o estado é Iniciando, não Erro; depois de 90 s sem confirmar, diz que continua conferindo. A lista se confere sozinha a cada minuto quando algo precisa de atenção (senão a cada 5). No PC Lucas os dois remotes (Gufe e Cruz Verbena) ficaram Ativos em 1.5.2. Não testado no Windows.
 
+- 28/11/2026, sessão na nuvem: 1.5.4, a 1.5.3 abria com a lista vazia no PC Lucas: a thread de fundo não carregava o Nucleo.ps1 (as funções não existiam lá; causa exata não confirmada) e os erros eram ignorados. Agora o núcleo é carregado pelo texto ([scriptblock]::Create, sem política de execução nem $PSScriptRoot), os erros da thread de fundo aparecem no registro, e se mesmo assim não carregar o programa volta a rodar tudo na thread da janela (como na 1.5.2). A 1.5.3 não consegue se atualizar sozinha (a consulta ao site também rodava na thread quebrada): instalar a 1.5.4 à mão. Não testado no Windows.
+
 ## Pendente
 
 - Publicar versão nova: `ferramentas/Publicar-Versao.ps1` (ou pedir ao Claude), commit e push no app e no site.

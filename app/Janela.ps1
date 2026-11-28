@@ -265,18 +265,23 @@ $bLimparLog.Add_Click({ $detalhe.Clear() })
 $script:Fila = New-Object 'System.Collections.Concurrent.ConcurrentQueue[string]'
 $script:Trabalhos = New-Object System.Collections.ArrayList
 $script:Ocupado = $false
+$script:SemFundo = $false
+# Carrega o núcleo pelo texto (sem depender da política de execução nem do caminho do script).
 $script:PreparoFundo = @'
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
-. (Join-Path $AppPasta 'Nucleo.ps1')
-. (Join-Path $AppPasta 'Atualizacao.ps1')
+foreach ($arqFundo in 'Nucleo.ps1', 'Atualizacao.ps1') {
+    $txtFundo = [IO.File]::ReadAllText((Join-Path $AppPasta $arqFundo))
+    . ([scriptblock]::Create($txtFundo.Replace('$PSScriptRoot', '$AppPasta')))
+}
+if (-not (Get-Command Get-ProcessosRC -ErrorAction SilentlyContinue)) { throw 'CRM-SEM-NUCLEO' }
 $script:OnLog = { param($m) $global:FilaLog.Enqueue([string]$m) }
 $script:OnEspera = $null
 '@
 
 # Roda $codigo (que usa $ArgFundo) em outra thread; quando termina, chama $aoTerminar($saida, $erro) na janela.
 function Start-Fundo([scriptblock]$codigo, $arg, [scriptblock]$aoTerminar) {
-    if ($Captura) {
-        # Na captura (sem janela visível) roda direto.
+    if ($Captura -or $script:SemFundo) {
+        # Na captura (sem janela visível), ou se a outra thread não funcionou neste PC, roda direto.
         $ArgFundo = $arg
         $saida = $null; $erro = $null
         try { $saida = @(& $codigo) } catch { $erro = $_.Exception.Message }
@@ -297,7 +302,7 @@ function Start-Fundo([scriptblock]$codigo, $arg, [scriptblock]$aoTerminar) {
         $ps.Runspace = $rs
         [void]$ps.AddScript($script:PreparoFundo + "`r`n" + $codigo.ToString())
         $h = $ps.BeginInvoke()
-        [void]$script:Trabalhos.Add(@{ ps = $ps; rs = $rs; h = $h; fim = $aoTerminar })
+        [void]$script:Trabalhos.Add(@{ ps = $ps; rs = $rs; h = $h; fim = $aoTerminar; codigo = $codigo; arg = $arg })
         $bomba.Start()
     } catch {
         & $aoTerminar $null "não consegui iniciar o trabalho em segundo plano: $($_.Exception.Message)"
@@ -319,8 +324,18 @@ $bomba.Add_Tick({
         $saida = $null; $erro = $null
         try { $saida = @($t.ps.EndInvoke($t.h)) } catch { $erro = $_.Exception.Message }
         if ($t.ps.InvocationStateInfo.State -eq 'Failed' -and $t.ps.InvocationStateInfo.Reason) { $erro = $t.ps.InvocationStateInfo.Reason.Message }
+        $avisos = @($t.ps.Streams.Error | Select-Object -First 3 | ForEach-Object { $_.ToString() })
         try { $t.ps.Dispose(); $t.rs.Close(); $t.rs.Dispose() } catch { }
         Write-Fila
+        if ("$erro" -like '*CRM-SEM-NUCLEO*' -or ($avisos -join ' ') -match 'Nucleo\.ps1|Atualizacao\.ps1|não é reconhecido|is not recognized') {
+            # A outra thread não conseguiu carregar o programa: volta ao modo antigo (na thread da janela).
+            Say "Não consegui rodar em segundo plano neste PC; sigo do jeito antigo (a janela pode ficar lenta). Detalhe: $(if ($erro) { $erro } else { $avisos[0] })"
+            $script:SemFundo = $true
+            $script:OnEspera = { [Windows.Forms.Application]::DoEvents() }
+            Start-Fundo $t.codigo $t.arg $t.fim
+            continue
+        }
+        foreach ($a in $avisos) { Say "  (aviso: $a)" }
         try { & $t.fim $saida $erro } catch { Say "ERRO: $($_.Exception.Message)" }
     }
     if ($script:Trabalhos.Count -eq 0) { $bomba.Stop() }
